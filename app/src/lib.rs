@@ -1,21 +1,20 @@
-//! Klangwelt-App (Desktop): die Tauri-Hülle um den gemeinsamen Kern
+//! Klangwelt app (desktop): the Tauri shell around the shared core
 //! (`klang-app`).
 //!
-//! * Jeder Aufruf der Oberfläche, den der Kern kennt, geht an dessen
-//!   Befehlstabelle (`klang_app::commands`) – dieselbe, die im Browser der
-//!   Web-Kern benutzt. Hier stehen nur Befehle, die es nur auf dem Desktop
-//!   gibt (Fenster schließen, „Im Ordner zeigen“, Bibliotheken herunterladen
-//!   und verwalten).
-//! * Der [`klang_app::Host`] des Desktops: Tauri-Events und die Ordner des
-//!   Betriebssystems.
-//! * Dazu der MCP-Server für den Agenten (`mcp.rs`) und die Kommandozeile.
+//! * Every UI call the core knows goes to its command table
+//!   (`klang_app::commands`) – the same one the web core uses in the browser.
+//!   Only commands that exist on the desktop alone live here (close window,
+//!   "Show in folder", download and manage libraries).
+//! * The desktop's [`klang_app::Host`]: Tauri events and the operating
+//!   system's folders.
+//! * Plus the MCP server for the agent (`mcp.rs`) and the command line.
 
 pub mod cli;
 mod libraries;
 mod library;
 mod mcp;
 
-// Module des Kerns, die die Hülle selbst braucht.
+// Core modules the shell needs itself.
 use klang_app::{settings, state};
 
 use klang_app::commands;
@@ -27,7 +26,7 @@ use std::time::Duration;
 use tauri::ipc::{Invoke, InvokeBody, InvokeError, InvokeResponseBody};
 use tauri::{Emitter, Manager};
 
-/// Die Plattform für den Kern: Tauri-Events und die Ordner des Betriebssystems.
+/// The platform for the core: Tauri events and the operating system's folders.
 struct DesktopHost(tauri::AppHandle);
 
 impl klang_app::Host for DesktopHost {
@@ -35,7 +34,7 @@ impl klang_app::Host for DesktopHost {
         let _ = self.0.emit_str(event, json);
     }
 
-    /// Dokumente/Klangwelt/Projekte.
+    /// Documents/Klangwelt/Projekte.
     fn projects_dir(&self) -> PathBuf {
         let p = self.0.path();
         p.document_dir()
@@ -50,8 +49,8 @@ impl klang_app::Host for DesktopHost {
     }
 }
 
-/// Datei der Einstellungen: lokaler App-Datenordner; mit `KLANGWELT_BIBLIOTHEK`
-/// in jenem Ordner (Tests).
+/// Settings file: local app data folder; with `KLANGWELT_BIBLIOTHEK` in that
+/// folder (tests).
 fn settings_file(app: &tauri::AppHandle) -> PathBuf {
     if let Some(r) = std::env::var_os("KLANGWELT_BIBLIOTHEK").filter(|r| !r.is_empty()) {
         return PathBuf::from(r).join(settings::FILE);
@@ -60,19 +59,19 @@ fn settings_file(app: &tauri::AppHandle) -> PathBuf {
     p.app_local_data_dir().or_else(|_| p.app_data_dir()).unwrap_or_else(|_| std::env::temp_dir()).join(settings::FILE)
 }
 
-// ---------------------------------------------------------------- Befehle nur für den Desktop
+// ---------------------------------------------------------------- Desktop-only commands
 
-/// Warum das Schließen angehalten wurde.
+/// Why closing was held back.
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct CloseInfo {
     dirty: bool,
-    /// Laufende Bibliotheksarbeit (Herunterladen, Indizieren) in Worten.
+    /// Library work in progress (downloading, indexing), in words.
     busy: Option<String>,
 }
 
-/// Zeigt eine exportierte Datei im Dateimanager (Explorer, Finder; unter Linux
-/// den Ordner).
+/// Shows an exported file in the file manager (Explorer, Finder; on Linux the
+/// folder).
 #[tauri::command]
 async fn export_reveal(path: String) -> Result<(), String> {
     let p = std::path::PathBuf::from(&path);
@@ -88,7 +87,7 @@ async fn export_reveal(path: String) -> Result<(), String> {
     {
         let mut cmd = std::process::Command::new("open");
         if !p.is_dir() {
-            cmd.arg("-R"); // im Finder markieren
+            cmd.arg("-R"); // highlight in Finder
         }
         cmd.arg(&p).spawn().map_err(|e| e.to_string())?;
     }
@@ -100,7 +99,7 @@ async fn export_reveal(path: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Schließt die App, auch mit ungespeicherten Änderungen (nach Rückfrage in der Oberfläche).
+/// Closes the app, even with unsaved changes (after confirmation in the UI).
 #[tauri::command]
 async fn app_close(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.force_close.store(true, Ordering::SeqCst);
@@ -108,12 +107,11 @@ async fn app_close(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> 
     Ok(())
 }
 
-// ---------------------------------------------------------------- Weiterleitung an den Kern
+// ---------------------------------------------------------------- Forwarding to the core
 
-/// Ein Aufruf, den der Kern kennt: im Hintergrund ausführen (wie zuvor die
-/// `async`-Befehle) und die fertige JSON-Antwort zurückgeben. Der Export
-/// rendert lange – er läuft auf einem eigenen Thread, die Oberfläche bleibt
-/// bedienbar.
+/// A call the core knows: runs in the background (like the `async` commands
+/// before) and returns the finished JSON response. The export renders for a
+/// long time – it runs on its own thread, the UI stays usable.
 fn invoke_core(invoke: Invoke) {
     let Invoke { message, resolver, .. } = invoke;
     let long = LONG_RUNNING.contains(&message.command());
@@ -138,8 +136,8 @@ fn invoke_core(invoke: Invoke) {
     }
 }
 
-/// Befehle, die lange rechnen und auf einem eigenen Thread laufen (nicht auf
-/// einem der Ablaufsteuerung).
+/// Commands that compute for a long time and run on their own thread (not on
+/// one of the control flow's).
 const LONG_RUNNING: &[&str] = &["export_run"];
 
 fn status_loop(handle: tauri::AppHandle) {
@@ -150,7 +148,7 @@ fn status_loop(handle: tauri::AppHandle) {
         if handle.emit("engine-status", st.status()).is_err() {
             break;
         }
-        // Agent verbunden/getrennt (auch abgelaufen) – etwa zweimal pro Sekunde prüfen
+        // Agent connected/disconnected (also timed out) – check about twice a second
         if tick % 15 == 0 && st.agent_connected() != connected {
             let view = st.chat_view();
             connected = view.agent_connected;
@@ -164,9 +162,9 @@ pub fn run() {
     run_with(None)
 }
 
-/// `KLANGWELT_HINTERGRUND=1`: Fenster für automatische Tests im Hintergrund –
-/// außerhalb des Bildschirms, ohne Taskleiste, ohne Fokus. Die Oberfläche
-/// läuft und zeichnet trotzdem (Tests bedienen sie über den Debug-Port).
+/// `KLANGWELT_HINTERGRUND=1`: window for automated tests in the background –
+/// off screen, no taskbar entry, no focus. The UI still runs and renders
+/// (tests drive it through the debug port).
 pub fn background_mode() -> bool {
     std::env::var_os("KLANGWELT_HINTERGRUND").is_some_and(|v| !v.is_empty() && v != "0")
 }
@@ -181,7 +179,7 @@ fn show_in_background(w: &tauri::WebviewWindow) {
             fn ShowWindow(hwnd: *mut std::ffi::c_void, cmd: i32) -> i32;
         }
         const SW_SHOWNOACTIVATE: i32 = 4;
-        // SAFETY: gültiges Fensterhandle des eigenen Fensters.
+        // SAFETY: valid window handle of our own window.
         unsafe {
             ShowWindow(hwnd.0 as _, SW_SHOWNOACTIVATE);
         }
@@ -190,7 +188,7 @@ fn show_in_background(w: &tauri::WebviewWindow) {
     let _ = w.show();
 }
 
-/// Befehle nur für den Desktop; alles andere beantwortet der Kern.
+/// Desktop-only commands; the core answers everything else.
 fn desktop_commands() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         app_close,
@@ -210,8 +208,8 @@ fn desktop_commands() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
     ]
 }
 
-/// Startet das Fenster; `open`: Projektdatei, die gleich geöffnet wird
-/// (Doppelklick auf eine .klangwelt-Datei).
+/// Starts the window; `open`: project file to open right away
+/// (double-click on a .klangwelt file).
 pub fn run_with(open: Option<std::path::PathBuf>) {
     let desktop = desktop_commands();
     tauri::Builder::default()
@@ -219,8 +217,8 @@ pub fn run_with(open: Option<std::path::PathBuf>) {
         .setup(move |app| {
             let handle = app.handle().clone();
             app.state::<AppState>().set_host(Box::new(DesktopHost(handle.clone())));
-            // Das Fenster startet unsichtbar (tauri.conf.json) und erscheint hier –
-            // für automatische Tests im Hintergrund, ohne aufzuspringen.
+            // The window starts invisible (tauri.conf.json) and appears here –
+            // for automated tests in the background, without popping up.
             if let Some(w) = app.get_webview_window("main") {
                 if background_mode() {
                     show_in_background(&w);
@@ -234,7 +232,7 @@ pub fn run_with(open: Option<std::path::PathBuf>) {
                     eprintln!("{}: {e}", p.display());
                 }
             }
-            // Gemerkte Einstellungen anwenden (Metronom an/aus, Audiogeräte vom letzten Mal)
+            // Apply remembered settings (metronome on/off, audio devices from last time)
             {
                 let st = app.state::<AppState>();
                 let file = settings_file(&handle);
@@ -246,14 +244,14 @@ pub fn run_with(open: Option<std::path::PathBuf>) {
                 *st.settings_file.lock().unwrap_or_else(|e| e.into_inner()) = Some(file);
             }
             mcp::start(handle.clone());
-            // Aktive Bibliothek laden (beim ersten Mal einrichten), danach
-            // unterbrochenes Herunterladen/Übernehmen fortsetzen
+            // Load the active library (set it up on first run), then resume
+            // interrupted downloading/importing
             libraries::startup(&handle);
             std::thread::Builder::new().name("klang-status".into()).spawn(move || status_loop(handle))?;
             Ok(())
         })
-        // Ungespeicherte Änderungen oder laufende Bibliotheksarbeit: Schließen
-        // anhalten, die Oberfläche fragt nach.
+        // Unsaved changes or library work in progress: hold back closing, the
+        // UI asks.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let st = window.state::<AppState>();

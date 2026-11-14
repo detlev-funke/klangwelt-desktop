@@ -1,5 +1,5 @@
-// Harmonie: Quintenzirkel, Vorschläge mit Stimmung, Legende, Wege zum Schluss,
-// Kadenzkarten (+ anhängen / In Spur), Moll, Agent.
+// Harmony: circle of fifths, suggestions with key, legend, paths to the ending,
+// cadence cards (+ append / To track), minor, agent.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startApp, makeTest, sleep } from "./harness.mjs";
@@ -20,13 +20,13 @@ after(async () => {
 const sketch = () => app.eval(() => T.$$(".hc-chips .hc-chip:not(.cand) b").map((b) => b.textContent));
 const toast = () => app.eval(() => T.$(".toast")?.textContent ?? "");
 
-/** Verlauf auf die Tonika zurücksetzen. */
+/** Reset the progression to the tonic. */
 async function clearSketch() {
   await app.clickOn(".hc-actions .btn", { text: "Leeren" });
   await app.waitFor(() => T.$$(".hc-chips .hc-chip b").length === 1, { what: "Verlauf nur Tonika" });
 }
 
-test("Zirkel mit 36 Feldern, Legende mit fünf Stimmungen", async () => {
+test("circle with 36 fields, legend with five moods", async () => {
   const r = await app.eval(() => ({
     cells: T.$$(".hc-cell").length,
     legend: T.$$(".hc-lg").map((l) => [l.textContent, getComputedStyle(l.querySelector("i")).backgroundColor]),
@@ -41,7 +41,7 @@ test("Zirkel mit 36 Feldern, Legende mit fünf Stimmungen", async () => {
   ]);
 });
 
-test("Vorschläge und Pfeile tragen ihre Stimmung", async () => {
+test("suggestions and arrows carry their mood", async () => {
   await clearSketch();
   const r = await app.eval(() => ({
     rows: T.$$(".hc-row").map((row) => [row.querySelector(".hc-pick b").textContent, row.querySelector(".hc-mood")?.dataset.mood]),
@@ -54,7 +54,7 @@ test("Vorschläge und Pfeile tragen ihre Stimmung", async () => {
   assert.ok(r.arrows.length >= 3 && r.arrows.every(Boolean), JSON.stringify(r.arrows));
 });
 
-test("Wege zum Schluss von C: alle Schlussarten, mehrschrittig, mit längeren Varianten", async () => {
+test("paths to the cadence of C: all cadence types, multi-step, with longer variants", async () => {
   const paths = await app.eval(() => T.$$(".hc-path").map((p) => ({
     label: p.querySelector(".hc-plabel").textContent,
     longer: p.classList.contains("longer"),
@@ -76,7 +76,7 @@ test("Wege zum Schluss von C: alle Schlussarten, mehrschrittig, mit längeren Va
   assert.equal(trug.moods.at(-1), "ueberraschend");
 });
 
-test("Maus über einem Weg zeichnet ihn nummeriert in den Zirkel, Klick hält ihn fest", async () => {
+test("mouse over a path draws it numbered into the circle, click holds it", async () => {
   const row = await app.center(".hc-path");
   await app.mouse("mouseMoved", row.x - row.w / 2 + 20, row.y);
   await sleep(150);
@@ -89,23 +89,23 @@ test("Maus über einem Weg zeichnet ihn nummeriert in den Zirkel, Klick hält ih
   assert.equal(shown.segs.length, shown.steps);
   assert.deepEqual(shown.nums, shown.segs.map((_, i) => String(i + 1)));
   assert.equal(shown.dim, true, "Vorschlagspfeile werden blass");
-  // weg mit der Maus: Weg verschwindet
+  // mouse away: path disappears
   await app.mouse("mouseMoved", 5, 500);
   await sleep(150);
   assert.equal(await app.eval(() => T.$$(".hc-route").length), 0);
-  // Klick hält fest
+  // click pins it
   await app.click(row.x - row.w / 2 + 20, row.y);
   await app.mouse("mouseMoved", 5, 500);
   await sleep(150);
   assert.equal(await app.eval(() => T.$(".hc-path").classList.contains("on")), true);
   assert.ok(await app.eval(() => T.$$(".hc-route .seg").length) > 0, "festgehaltener Weg bleibt");
-  await app.click(row.x - row.w / 2 + 20, row.y); // wieder lösen
+  await app.click(row.x - row.w / 2 + 20, row.y); // release again
   await app.mouse("mouseMoved", 5, 500);
   await sleep(100);
   assert.equal(await app.eval(() => T.$$(".hc-route").length), 0);
 });
 
-test("„+“ an einem Weg hängt seine Akkorde an den Verlauf", async () => {
+test("“+” on a path appends its chords to the progression", async () => {
   await clearSketch();
   const chords = await app.eval(() => [...T.$(".hc-path").querySelectorAll(".hc-pchip b")].slice(1).map((b) => b.textContent));
   await app.clickOn(".hc-path .hc-pbtns .btn.blue");
@@ -114,13 +114,13 @@ test("„+“ an einem Weg hängt seine Akkorde an den Verlauf", async () => {
   assert.match(await toast(), /an den Verlauf angehängt/);
 });
 
-test("Kadenzkarte „+ anhängen“: Akkorde erscheinen sichtbar im Verlauf (Fehlerbericht)", async () => {
+test("cadence card “+ Append”: chords visibly appear in the progression (bug report)", async () => {
   await clearSketch();
   const card = await app.eval(() => {
     const c = T.$(".hc-cadcard");
     return { name: c.querySelector("b").textContent, chords: [...c.querySelectorAll(".hc-pchip b")].map((b) => b.textContent) };
   });
-  // Knopf liegt weit unten – vorher ist der Verlauf aus dem Bild gerollt
+  // Button is far down – before that the progression has scrolled out of view
   await app.clickOn(".hc-cadcard .btn.blue", { text: "anhängen" });
   await app.waitFor(() => T.$$(".hc-chips .hc-chip b").length > 1, { what: "Verlauf verlängert" });
   const expect = card.chords[0] === "C" ? card.chords : ["C", ...card.chords];
@@ -134,19 +134,19 @@ test("Kadenzkarte „+ anhängen“: Akkorde erscheinen sichtbar im Verlauf (Feh
   }, { what: "Verlauf im Bild" });
 });
 
-test("Kadenzkarte „In Spur“: anhängen und gleich vierstimmig in die Spur schreiben", async () => {
+test("cadence card “To track”: append and immediately write four-part into the track", async () => {
   await app.reset();
   await clearSketch();
   await app.clickOn(".hc-cadcard .btn", { text: "In Spur" });
   const t = await app.waitFor(() => T.st.snapshot.peek().project.tracks.find((t) => t.name === "Akkorde") ?? null, { what: "Spur Akkorde" });
-  // geschrieben wird der ganze noch nicht geschriebene Verlauf: Tonika + Kadenz
+  // the whole not-yet-written progression gets written: tonic + cadence
   const chords = (await sketch()).length;
   const notes = t.clips.reduce((a, c) => a + c.source.notes.length, 0);
   assert.equal(notes, 4 * chords, `${chords} Akkorde × 4 Stimmen`);
   await app.waitFor((n) => T.$$(".hc-chip.fixed").length === n, { what: "alle Akkorde als „in der Spur“ markiert" }, chords);
 });
 
-test("Legende: Maus über einer Stimmung blendet die anderen aus", async () => {
+test("legend: mouse over a mood fades out the others", async () => {
   await clearSketch();
   const item = await app.center(".hc-lg.m-dunkel");
   await app.mouse("mouseMoved", item.x, item.y);
@@ -162,7 +162,7 @@ test("Legende: Maus über einer Stimmung blendet die anderen aus", async () => {
   assert.equal(await app.eval(() => T.$$(".harmony .faded").length), 0);
 });
 
-test("a-Moll: phrygischer Halbschluss über iv⁶", async () => {
+test("a-Moll: Phrygian half cadence over iv⁶", async () => {
   await app.eval(async () => {
     const sel = T.$("kw-panel[tab='harmonie'] .hc-select");
     sel.value = "9:m";
@@ -178,7 +178,7 @@ test("a-Moll: phrygischer Halbschluss über iv⁶", async () => {
   assert.equal(phr.at(-1), "V");
 });
 
-test("Agent: suggest_chords liefert Stimmung und Wege zum Schluss", async () => {
+test("agent: suggest_chords returns mood and paths to the cadence", async () => {
   const r = await app.mcp("suggest_chords", { key: "C-Dur", chords: ["C", "a"] });
   // agent-facing values are not translated – the keys, English since the switch to English keys
   assert.ok(r.vorschlaege.every((v) => ["resolving", "tense", "surprising", "bright", "dark"].includes(v.stimmung)));
@@ -188,12 +188,12 @@ test("Agent: suggest_chords liefert Stimmung und Wege zum Schluss", async () => 
   for (const w of r.wegeZumSchluss) assert.equal(w.stimmungen.length, w.akkorde.length);
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });
 
-test("Wege zum Schluss: Übergangswahrscheinlichkeit aus der Bibliothek steht sichtbar unter jedem Pfeil", async () => {
-  // Zahlen der Bibliothek unterschieben – das Testprojekt hat keine Akkordstatistik
+test("paths to the cadence: transition probability from the library is visible under every arrow", async () => {
+  // Slip in the library's numbers – the test project has no chord statistics
   await app.eval(async () => {
     const { backend } = await import("./bridge.js");
     const orig = backend.harmonySuggest.bind(backend);
@@ -205,7 +205,7 @@ test("Wege zum Schluss: Übergangswahrscheinlichkeit aus der Bibliothek steht si
     };
     T.st.showPanel("harmonie");
   });
-  // neu laden lassen: Tonart umschalten und zurück
+  // trigger a reload: switch key and back
   await app.eval(async () => {
     const sel = T.$("kw-panel[tab=harmonie] .hc-head select");
     const v = sel.value;
@@ -225,13 +225,13 @@ test("Wege zum Schluss: Übergangswahrscheinlichkeit aus der Bibliothek steht si
   });
 });
 
-test("Breites Harmonie-Fenster: Wege zum Schluss rechts, der Zirkel bleibt beim Scrollen stehen", async () => {
+test("wide harmony window: paths to the cadence on the right, the circle stays put when scrolling", async () => {
   await app.eval(() => T.st.showPanel("harmonie"));
   await app.waitFor(() => T.$$("kw-panel[tab=harmonie] .hc-path").length > 0, { what: "Wege" });
-  // schmal (Standard rechts): Wege unter dem Zirkel
+  // narrow (default on the right): paths below the circle
   const narrow = await app.eval(() => ({ cols: getComputedStyle(T.$(".hc-body")).gridTemplateColumns.split(" ").length, inLeft: !!T.$(".hc-left .hc-paths") }));
   if (narrow.cols === 1) assert.equal(narrow.inLeft, true, "schmal: Wege links unter dem Zirkel");
-  // breit machen: das Fenster schwebend und groß
+  // make it wide: the window floating and large
   await app.eval(() => {
     const panel = T.$("kw-panel[tab=harmonie]");
     panel.style.width = "980px";
@@ -251,7 +251,7 @@ test("Breites Harmonie-Fenster: Wege zum Schluss rechts, der Zirkel bleibt beim 
   assert.equal(wide.cols, 2);
   assert.equal(wide.sticky, "sticky");
   if (wide.scrolled > 50) assert.ok(wide.moved < wide.scrolled, `Zirkel bleibt stehen (${wide.moved} px bei ${wide.scrolled} px Scrollen)`);
-  // wieder schmal: Wege zurück unter den Zirkel
+  // narrow again: paths back below the circle
   await app.eval(() => {
     T.$("kw-panel[tab=harmonie] .tab-body").scrollTop = 0;
     T.$("kw-panel[tab=harmonie]").style.width = "";

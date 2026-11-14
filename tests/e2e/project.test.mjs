@@ -1,4 +1,4 @@
-// Projekt: Spuren anlegen und löschen, Demo, Speichern/Öffnen/Neu, ungespeichert-Markierung, Spurkopf.
+// Project: create and delete tracks, demo, save/open/new, unsaved marker, track header.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
@@ -16,7 +16,7 @@ after(async () => {
 
 const tracks = () => app.eval(() => T.st.snapshot.peek().project.tracks.map((t) => `${t.kind}:${t.name}`));
 
-test("Leeres Projekt zeigt den Hinweis mit Knöpfen", async () => {
+test("empty project shows the hint with buttons", async () => {
   await app.reset();
   const hint = await app.eval(() => {
     const h = T.$(".empty-hint");
@@ -25,7 +25,7 @@ test("Leeres Projekt zeigt den Hinweis mit Knöpfen", async () => {
   assert.deepEqual(hint, ["Intro", "Demo laden", "Mit Song starten ▾", "Mit Beat starten ▾", "Instrumentspur", "Aufnehmen"]);
 });
 
-test("Instrumentspur über den Hinweis anlegen, Audiospur über den Spurkopf", async () => {
+test("create an instrument track via the hint, an audio track via the track header", async () => {
   await app.reset();
   await app.clickOn(".empty-hint .btn", { text: "Instrumentspur" });
   await app.waitFor(() => T.st.snapshot.peek().project.tracks.length === 1, { what: "Spur" });
@@ -34,7 +34,7 @@ test("Instrumentspur über den Hinweis anlegen, Audiospur über den Spurkopf", a
   assert.deepEqual(await tracks(), ["instrument:Instrument 1", "audio:Audio 1"]);
 });
 
-test("Spur stumm/solo schalten und löschen", async () => {
+test("mute/solo and delete a track", async () => {
   const id = await app.eval(() => T.st.snapshot.peek().project.tracks[0].id);
   await app.clickOn(".toggle.m");
   await app.waitFor((id) => T.st.snapshot.peek().project.tracks.find((t) => t.id === id).mute, { what: "stumm" }, id);
@@ -44,14 +44,14 @@ test("Spur stumm/solo schalten und löschen", async () => {
   await app.waitFor(() => T.st.snapshot.peek().project.tracks.length === 1, { what: "gelöscht" });
 });
 
-test("Demo laden", async () => {
+test("load demo", async () => {
   await app.reset();
   await app.clickOn(".empty-hint .btn", { text: "Demo laden" });
   await app.waitFor(() => T.st.snapshot.peek().project.tracks.length >= 2, { what: "Demo-Spuren" });
   assert.equal(await app.eval(() => T.st.snapshot.peek().project.tempoBpm), 110);
 });
 
-test("Speichern, Neu, Öffnen – mit Markierung für ungespeicherte Änderungen", async () => {
+test("save, new, open – with a marker for unsaved changes", async () => {
   await app.reset();
   await app.eval(() => T.st.run({ type: "addTrack", track: { id: 0, name: "Gespeichert", kind: "instrument" } }));
   assert.match(await app.eval(() => T.$(".proj-name").textContent), / •$/, "ungespeichert");
@@ -66,7 +66,7 @@ test("Speichern, Neu, Öffnen – mit Markierung für ungespeicherte Änderungen
   assert.equal(await app.eval(() => T.$(".proj-name").textContent), "test");
 });
 
-test("Strg+Z und Strg+Y", async () => {
+test("Ctrl+Z and Ctrl+Y", async () => {
   await app.reset();
   await app.eval(() => T.st.run({ type: "addTrack", track: { id: 0, name: "Eins", kind: "instrument" } }));
   await app.key("z", { mods: 2 });
@@ -75,9 +75,9 @@ test("Strg+Z und Strg+Y", async () => {
   await app.waitFor(() => T.st.snapshot.peek().project.tracks.length === 1, { what: "wiederholt" });
 });
 
-// Fehler, den dieser Test gefunden hat: Bei einer nicht gewählten Spur ersetzte das
-// Neuzeichnen beim Drücken das Symbol unter der Maus – der erste Klick ging verloren.
-test("Notenansicht im Spurkopf umschalten – schon mit dem ersten Klick auf eine nicht gewählte Spur", async () => {
+// Bug this test found: for an unselected track, the redraw on press replaced
+// the icon under the mouse – the first click was lost.
+test("toggle the note view in the track header – already with the first click on an unselected track", async () => {
   await app.eval(() => (T.st.selection.value = null));
   const before = await app.eval(() => T.st.snapshot.peek().project.tracks[0].view);
   await app.clickOn("kw-tracks .toggle.v");
@@ -86,6 +86,6 @@ test("Notenansicht im Spurkopf umschalten – schon mit dem ersten Klick auf ein
   await app.waitFor((b) => T.st.snapshot.peek().project.tracks[0].view === b, { what: "Ansicht zurück" }, before);
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });

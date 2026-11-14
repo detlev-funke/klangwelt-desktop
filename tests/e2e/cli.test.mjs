@@ -1,5 +1,5 @@
-// Kommandozeile von klangwelt.exe: Hilfe, Version, „index“ (Bibliothek),
-// „--mcp“ (stdio-Brücke, auch mit Selbststart der App) und Projektdatei öffnen.
+// Command line of klangwelt.exe: help, version, "index" (library),
+// "--mcp" (stdio bridge, also with self-start of the app) and opening a project file.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -23,7 +23,7 @@ after(async () => {
   rmSync(work, { recursive: true, force: true });
 });
 
-/** Programm ausführen, Ausgaben sammeln. */
+/** Runs the program, collects output. */
 function exec(args, { env = {}, input, timeout = 60000 } = {}) {
   return new Promise((resolve, reject) => {
     const p = spawn(EXE, args, { env: { ...process.env, ...env }, stdio: ["pipe", "pipe", "pipe"] });
@@ -57,18 +57,18 @@ function freePort() {
   });
 }
 
-test("--help nennt alle Aufrufe, --version die Version", async () => {
+test("--help lists all invocations, --version the version", async () => {
   const h = await exec(["--help"]);
   assert.equal(h.code, 0);
-  for (const s of ["klangwelt --mcp", "klangwelt index build", "klangwelt index query", "klangwelt <datei.klangwelt>"]) assert.ok(h.out.includes(s), s);
+  for (const s of ["klangwelt --mcp", "klangwelt index build", "klangwelt index query", "klangwelt <file.klangwelt>"]) assert.ok(h.out.includes(s), s);
   const v = await exec(["--version"]);
   assert.match(v.out, /^Klangwelt \d+\.\d+\.\d+/);
 });
 
-test("Unbekannter Aufruf: Fehlermeldung mit Hilfe, Exit-Code 2 – kein Fenster", async () => {
+test("unknown invocation: error message with help, exit code 2 – no window", async () => {
   const r = await exec(["indx"]);
   assert.equal(r.code, 2);
-  assert.match(r.err, /Unbekannter Aufruf: klangwelt indx/);
+  assert.match(r.err, /Unknown command: klangwelt indx/);
 });
 
 test("index build / query / analyze / chords", async () => {
@@ -77,7 +77,7 @@ test("index build / query / analyze / chords", async () => {
   const b = await exec(["index", "build", src, kwix]);
   assert.equal(b.code, 0, b.err);
   assert.ok(existsSync(kwix));
-  assert.match(b.out, /2 Partituren, 5 Stimmen/);
+  assert.match(b.out, /2 scores, 5 voices/);
 
   const q = await exec(["index", "query", kwix, "60:1 62:1 64:1 65:1 67:2 67:2 69:1"]);
   assert.equal(q.code, 0, q.err);
@@ -90,13 +90,13 @@ test("index build / query / analyze / chords", async () => {
 
   const c = await exec(["index", "chords", kwix, "C-Dur", "C", "G7"]);
   assert.equal(c.code, 0, c.err);
-  assert.match(c.out, /Nach G7/);
+  assert.match(c.out, /After G7/);
 
   const bad = await exec(["index", "query"]);
   assert.equal(bad.code, 2);
 });
 
-test("--mcp verbindet MCP-Clients über stdio mit der laufenden App", async () => {
+test("--mcp connects MCP clients to the running app over stdio", async () => {
   const input = [rpc(1, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } }),
     JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
     rpc(2, "tools/list"),
@@ -111,14 +111,14 @@ test("--mcp verbindet MCP-Clients über stdio mit der laufenden App", async () =
   assert.ok(!got[2].result.isError);
 });
 
-test("--mcp startet Klangwelt selbst, wenn es nicht läuft", async () => {
+test("--mcp starts Klangwelt itself if it is not running", async () => {
   const port = await freePort();
   const iso = mkdtempSync(join(tmpdir(), "klangwelt-selbst-"));
   let pid = null;
   try {
     const r = await exec(["--mcp"], {
       env: {
-        // das selbst gestartete Fenster erbt den Hintergrundmodus
+        // the window it started itself inherits the background mode
         ...BACKGROUND_ENV,
         KLANGWELT_MCP_URL: `http://127.0.0.1:${port}/mcp`,
         KLANGWELT_BIBLIOTHEK: join(iso, "bib"),
@@ -127,11 +127,11 @@ test("--mcp startet Klangwelt selbst, wenn es nicht läuft", async () => {
       input: rpc(1, "tools/list") + "\n",
       timeout: 90000,
     });
-    pid = Number(r.err.match(/Klangwelt gestartet \(PID (\d+)\)/)?.[1] ?? 0) || null;
+    pid = Number(r.err.match(/Klangwelt started \(PID (\d+)\)/)?.[1] ?? 0) || null;
     assert.ok(pid, `PID gemeldet: ${r.err}`);
     const got = replies(r.out);
     assert.ok(got[0].result?.tools?.length > 10, JSON.stringify(got[0]).slice(0, 300));
-    // Das gestartete Fenster läuft weiter, auch wenn die Brücke endet
+    // The started window keeps running even when the bridge exits
     await sleep(500);
     const alive = await fetch(`http://127.0.0.1:${port}/mcp`, { method: "POST", headers: { "content-type": "application/json" }, body: rpc(9, "ping") }).then((x) => x.ok).catch(() => false);
     assert.ok(alive, "App läuft nach dem Ende der Brücke weiter");
@@ -140,11 +140,11 @@ test("--mcp startet Klangwelt selbst, wenn es nicht läuft", async () => {
       try {
         process.kill(pid);
       } catch {
-        /* schon beendet */
+        /* already exited */
       }
     }
     await sleep(1500);
-    // WebView2 gibt Dateien manchmal erst einige Sekunden nach dem Ende frei
+    // WebView2 sometimes releases files only a few seconds after exit
     for (let i = 0; ; i++) {
       try {
         rmSync(iso, { recursive: true, force: true });
@@ -157,7 +157,7 @@ test("--mcp startet Klangwelt selbst, wenn es nicht läuft", async () => {
   }
 });
 
-test("Projektdatei öffnen: läuft Klangwelt schon, öffnet es dort (kein zweites Fenster)", async () => {
+test("opening a project file: if Klangwelt is already running, it opens there (no second window)", async () => {
   const file = join(work, "Mein Lied.klangwelt");
   await app.reset();
   await app.eval(async (f) => {
@@ -172,7 +172,7 @@ test("Projektdatei öffnen: läuft Klangwelt schon, öffnet es dort (kein zweite
   assert.match(await app.eval(() => T.st.snapshot.peek().file ?? ""), /Mein Lied\.klangwelt$/);
 });
 
-test("Projektdatei öffnen bei ungespeicherten Änderungen: erst nachfragen", async () => {
+test("opening a project file with unsaved changes: ask first", async () => {
   const file = join(work, "Mein Lied.klangwelt");
   await app.eval(() => T.st.run({ type: "addTrack", track: { id: 0, name: "Ungespeichert", kind: "instrument" } }));
   const r = await exec([file], { env: { KLANGWELT_MCP_PORT: String(app.mcpPort) }, timeout: 15000 });
@@ -183,6 +183,6 @@ test("Projektdatei öffnen bei ungespeicherten Änderungen: erst nachfragen", as
   await app.eval(() => T.$$(".modal .btn").find((b) => /Abbrechen/.test(b.textContent))?.click());
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });

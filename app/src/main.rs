@@ -1,4 +1,4 @@
-// Im Release-Build unter Windows kein zusätzliches Konsolenfenster öffnen.
+// In the release build on Windows, do not open an additional console window.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use klangwelt_lib::cli::{self, Mode};
@@ -7,7 +7,7 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match cli::parse(&args) {
         Mode::Gui { open } => {
-            // Doppelklick auf ein Projekt, Klangwelt läuft schon: dort öffnen
+            // Double-click on a project, Klangwelt already running: open it there
             if let Some(p) = &open {
                 if cli::forward_open(p) {
                     return;

@@ -1,6 +1,6 @@
-// PDMX-Download über eine wackelige Verbindung: Ein lokaler Server bricht jede
-// Antwort nach einem Stück ab. Die App setzt an derselben Stelle fort
-// (HTTP-Range), entpackt lückenlos und übernimmt alles in die Bibliothek.
+// PDMX download over a flaky connection: a local server cuts off every
+// response after a chunk. The app resumes at the same place
+// (HTTP Range), unpacks without gaps and imports everything into the library.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -13,7 +13,7 @@ import { musicXml } from "./fixtures.mjs";
 const SCALE = ["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5", "F5", "G5"];
 const COUNT = 30;
 
-/** Minimales tar (ustar) aus { name, data } – reicht für reguläre Dateien. */
+/** Minimal tar (ustar) from { name, data } – enough for regular files. */
 function tar(files) {
   const blocks = [];
   for (const { name, data } of files) {
@@ -49,7 +49,7 @@ let requests = [];
 let app;
 const test = makeTest(() => app);
 before(async () => {
-  // liefert das Archiv (auch ab einer Range), bricht aber jede Antwort nach CUT Bytes ab
+  // serves the archive (also from a Range) but cuts off every response after CUT bytes
   server = createServer((req, res) => {
     const m = /bytes=(\d+)-/.exec(req.headers.range ?? "");
     const from = m ? Number(m[1]) : 0;
@@ -74,14 +74,14 @@ after(async () => {
 
 const info = () => app.eval(() => window.__TAURI__.core.invoke("library_info"));
 
-test("Abgerissene Verbindungen werden fortgesetzt – alle Partituren kommen an und werden übernommen", async () => {
+test("broken connections are resumed – all scores arrive and are adopted", async () => {
   await app.waitFor(async () => {
     const i = await window.__TAURI__.core.invoke("library_info");
     return i.id && !i.loading && !i.building;
   }, { timeout: 30000, what: "Bibliothek bereit" });
   const start = await app.eval(() => window.__TAURI__.core.invoke("library_download", { id: "pdmx-kostprobe", folder: null, withMeta: false }));
   assert.equal(start.currentPack, "pdmx-kostprobe");
-  // Während es läuft, meldet die App das Fortsetzen
+  // While it runs, the app reports the resuming
   const resumeMsg = await app.waitFor(async () => {
     const i = await window.__TAURI__.core.invoke("library_info");
     return i.message && /Verbindung unterbrochen/.test(i.message) ? i.message : null;
@@ -92,12 +92,12 @@ test("Abgerissene Verbindungen werden fortgesetzt – alle Partituren kommen an 
     return !i.currentPack && !i.download && !i.building && i.merging == null ? i : null;
   }, { timeout: 60000, what: "Download und Übernehmen fertig" });
   assert.equal(done.scores, COUNT, done.message);
-  // Anfragen: von vorn, dann jeweils ab der Abrissstelle (weiter hinten)
+  // Requests: from the start, then each from the cut-off point (further back)
   assert.ok(requests.length >= 3, `mehrfach abgerissen: ${requests}`);
   assert.equal(requests[0], 0);
   for (let i = 1; i < requests.length; i++) assert.ok(requests[i] > requests[i - 1], `fortgesetzt statt von vorn: ${requests}`);
   assert.match(done.message, new RegExp(`Die Verbindung riss ${requests.length - 1}-mal ab und wurde jeweils fortgesetzt`));
-  // Dateien lückenlos und unverändert
+  // files without gaps and unchanged
   const dir = join(app.tmp, "bibliothek", "PDMX-Kostprobe");
   for (const f of files) {
     const p = join(dir, f.name.replace(/^mxl\//, ""));
@@ -105,7 +105,7 @@ test("Abgerissene Verbindungen werden fortgesetzt – alle Partituren kommen an 
     assert.ok(readFileSync(p).equals(f.data), `${p} unverändert`);
   }
   assert.ok(!readdirSync(join(dir, "0")).some((n) => n.endsWith(".teil")), "keine halben Dateien");
-  // gefunden wird auch
+  // is also found
   const hits = await app.eval(async () => (await window.__TAURI__.core.invoke("library_search", { text: "Wackelstück 7" })).map((h) => h.title));
   assert.ok(hits.includes("Wackelstück 7"), JSON.stringify(hits));
 });

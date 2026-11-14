@@ -1,8 +1,8 @@
-// Klang-Fenster: drei Felder (Charakter, Klangfarbe, Raum) mit eigenen
-// Startpunkten, die nur ihr eigenes Feld ändern; Punkt ziehen (ein
-// Rückgängig-Schritt); Felder ein-/ausblenden; Anspielen aus · Einzelton ·
-// Muster; Synth mit Verlaufsvorlagen, Puls, Ausklang und gezeichneten Kurven;
-// Wellenform; dasselbe per Agent.
+// Sound window: three fields (character, timbre, space) with their own
+// starting points that change only their own field; drag the dot (one
+// undo step); show/hide fields; preview off · single note ·
+// pattern; synth with envelope presets, pulse, release and drawn curves;
+// waveform; the same via the agent.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startApp, makeTest, sleep } from "./harness.mjs";
@@ -24,12 +24,12 @@ async function open(kind) {
     T.st.showPanel("klang");
   }, r.trackId);
   await app.waitFor(() => T.$$(".snd-field").length === 3, { what: "Felder" });
-  // Vorhören beim Loslassen aus – die Tests sollen leise sein
+  // Preview on release off – the tests should be quiet
   await app.eval(() => T.$(".snd-play .seg-btn[data-mode=aus]").click());
   return r.trackId;
 }
 const mark = (field, name) => app.clickOn(`.snd-field[data-field=${field}] .snd-mark`, { text: name });
-/** Punkt in einem Feld (x, y je 0…1) in Fensterkoordinaten. */
+/** Point in a field (x, y each 0…1) in window coordinates. */
 const plotAt = (field, x, y) => app.eval(async (field, x, y) => {
   const el = T.$(`.snd-field[data-field=${field}] .snd-plot`);
   el.scrollIntoView({ block: "center" });
@@ -38,7 +38,7 @@ const plotAt = (field, x, y) => app.eval(async (field, x, y) => {
   return [r.x + x * r.width, r.y + (1 - y) * r.height];
 }, field, x, y);
 
-test("Drei Felder mit Achsen und Startpunkten", async () => {
+test("three fields with axes and starting points", async () => {
   await app.reset();
   await open("drums");
   const f = await app.eval(() => T.$$(".snd-field").map((el) => ({
@@ -56,11 +56,11 @@ test("Drei Felder mit Achsen und Startpunkten", async () => {
   assert.deepEqual(f[2].x, ["schmal", "mittig", "breit", "weit"]);
   assert.equal(f[2].y, "nah → fern");
   assert.ok(f[2].marks.includes("Kirche"));
-  // keine Knöpfe mit Voreinstellungen neben den Feldern
+  // no buttons with presets next to the fields
   assert.equal(await app.eval(() => T.$$(".sound-side .presets").length), 1, "nur Vorhören");
 });
 
-test("Ein Startpunkt ändert nur sein eigenes Feld", async () => {
+test("a starting point changes only its own field", async () => {
   await app.reset();
   const id = await open("drums");
   await mark("klangfarbe", "Staub");
@@ -86,7 +86,7 @@ test("Ein Startpunkt ändert nur sein eigenes Feld", async () => {
   await app.waitFor(() => T.$(".snd-field[data-field=klangfarbe] .snd-mark.on")?.dataset.name === "Glanz", { what: "Marke Glanz aktiv" });
 });
 
-test("Punkt ziehen verschiebt die Regler – ein Rückgängig-Schritt", async () => {
+test("dragging a point moves the sliders – one undo step", async () => {
   await app.reset();
   const id = await open("drums");
   const before = (await inst(id)).params;
@@ -98,7 +98,7 @@ test("Punkt ziehen verschiebt die Regler – ein Rückgängig-Schritt", async ()
   assert.ok(after["kick.laenge"] > before["kick.laenge"] + 0.2, "mächtiger");
   assert.ok(after["kick.grundton"] < before["kick.grundton"], "tiefer");
   assert.equal((await inst(id)).preset, "eigen");
-  // letzte Bewegung abwarten (die Anfragen laufen nacheinander)
+  // wait for the last movement (the requests run one after another)
   await app.waitFor(async (id) => {
     const x = T.st.snapshot.peek().project.tracks.find((t) => t.id === id).instrument.params["charakter.x"];
     await T.sleep(250);
@@ -113,12 +113,12 @@ test("Punkt ziehen verschiebt die Regler – ein Rückgängig-Schritt", async ()
   assert.equal(undone["kick.laenge"], before["kick.laenge"], "ein Schritt macht das ganze Ziehen rückgängig");
 });
 
-test("Klangfarbe und Raum lassen sich ausblenden – das bleibt so", async () => {
+test("timbre and room can be hidden – it stays that way", async () => {
   await app.reset();
   const id = await open("bass");
   await app.clickOn(".snd-toggle", { text: "Raum" });
   assert.equal(await app.eval(() => T.$(".snd-field[data-field=raum]").hidden), true);
-  // neu aufbauen (andere Spur und zurück): bleibt ausgeblendet
+  // rebuild (other track and back): stays hidden
   const other = await open("pluck");
   assert.equal(await app.eval(() => T.$(".snd-field[data-field=raum]").hidden), true);
   await app.eval((id) => (T.st.selection.value = { trackId: id, clipId: null }), id);
@@ -129,10 +129,10 @@ test("Klangfarbe und Raum lassen sich ausblenden – das bleibt so", async () =>
   assert.ok(other > 0);
 });
 
-test("Die Schrift eines Startpunkts fängt keine Klicks – nur sein Punkt", async () => {
+test("the label of a starting point does not catch clicks – only its dot", async () => {
   await app.reset();
   const id = await open("drums");
-  // Klick auf den Namen „Techno“: setzt den Punkt dort, wählt aber nicht den Startpunkt
+  // Click on the name "Techno": sets the dot there, but does not select the starting point
   const at = await app.eval(async () => {
     const m = T.$$(".snd-field[data-field=charakter] .snd-mark").find((x) => x.dataset.name === "Techno");
     m.scrollIntoView({ block: "center" });
@@ -147,7 +147,7 @@ test("Die Schrift eines Startpunkts fängt keine Klicks – nur sein Punkt", asy
     return i.preset === "eigen" ? i : null;
   }, { what: "Punkt gesetzt statt Startpunkt" }, id);
   assert.ok(Math.abs(i.params["charakter.x"] - at.fx) < 0.03, `x ${i.params["charakter.x"]} ≈ ${at.fx}`);
-  // Klick auf den Punkt der Marke wählt den Startpunkt
+  // Click on the marker's dot selects the starting point
   await mark("charakter", "Techno");
   await app.waitFor((id) => T.st.snapshot.peek().project.tracks.find((t) => t.id === id).instrument.preset === "Techno", { what: "Startpunkt Techno" }, id);
   const dot = await app.eval(() => {
@@ -159,7 +159,7 @@ test("Die Schrift eines Startpunkts fängt keine Klicks – nur sein Punkt", asy
   assert.ok(Math.abs(dot[0] - 0.22) < 0.02 && Math.abs(dot[1] - 0.42) < 0.02, `Punkt sitzt genau auf dem Startpunkt: ${dot}`);
 });
 
-test("Die Felder wachsen mit dem Fenster und passen in die sichtbare Höhe", async () => {
+test("the fields grow with the window and fit the visible height", async () => {
   await app.reset();
   await open("drums");
   const size = () => app.eval(() => {
@@ -176,7 +176,7 @@ test("Die Felder wachsen mit dem Fenster und passen in die sichtbare Höhe", asy
       const p = T.$(".snd-plot").getBoundingClientRect();
       return p.width > w + 20 ? Math.round(p.width) : null;
     }, { what: "größere Felder" }, small.w);
-    // sichtbar ohne Rollen: das Feld endet oberhalb der Unterkante des Fensters
+    // visible without roles: the field ends above the bottom edge of the window
     const geo = await app.eval(() => {
       const body = T.$(".snd-plot").closest(".tab-body");
       body.scrollTop = 0;
@@ -184,7 +184,7 @@ test("Die Felder wachsen mit dem Fenster und passen in die sichtbare Höhe", asy
     });
     assert.ok(geo.plotBottom <= geo.bodyBottom, JSON.stringify(geo));
     assert.ok(big > small.w);
-    // ein Feld ausgeblendet: die übrigen dürfen breiter werden, bleiben aber in der Höhe
+    // one field hidden: the others may get wider, but keep their height
     await app.clickOn(".snd-toggle", { text: "Raum" });
     await sleep(200);
     const two = await app.eval(() => {
@@ -198,7 +198,7 @@ test("Die Felder wachsen mit dem Fenster und passen in die sichtbare Höhe", asy
   }
 });
 
-test("Zeitverlauf lässt sich einklappen – das bleibt so", async () => {
+test("time course can be collapsed – it stays that way", async () => {
   await app.reset();
   await open("synth");
   assert.equal(await app.eval(() => T.$(".snd-time").open), true, "anfangs offen");
@@ -209,13 +209,13 @@ test("Zeitverlauf lässt sich einklappen – das bleibt so", async () => {
     await open("drums");
     assert.equal(await app.eval(() => T.$(".snd-time").open), false, "bleibt eingeklappt");
   } finally {
-    // für die übrigen Tests wieder offen
+    // open again for the remaining tests
     await app.eval(() => T.$(".snd-time").open || T.$(".snd-time > summary").click());
   }
   await app.waitFor(() => T.$(".snd-wave").checkVisibility() && T.$(".snd-wave").getBoundingClientRect().height > 50, { what: "Wellenform wieder da" });
 });
 
-test("Synth: Verlaufsvorlagen setzen Kurven, Puls und Ausklang", async () => {
+test("synth: course templates set curves, pulse and decay", async () => {
   await app.reset();
   const id = await open("synth");
   const chips = await app.eval(() => T.$$(".snd-vchip").map((b) => b.textContent));
@@ -231,20 +231,20 @@ test("Synth: Verlaufsvorlagen setzen Kurven, Puls und Ausklang", async () => {
   await app.waitFor(() => T.$(".snd-vchip.on")?.textContent === "Pulsieren" && T.$(".snd-vctl .seg-btn.on")?.textContent === "⅛", { what: "Anzeige" });
   await app.clickOn(".snd-vctl .seg-btn", { text: "aus" });
   await app.waitFor((id) => T.st.snapshot.peek().project.tracks.find((t) => t.id === id).instrument.params["verlauf.puls"] === 0, { what: "Puls aus" }, id);
-  // Charakter-Startpunkt beim Synth ändert den Verlauf nicht
+  // Character starting point on the synth does not change the envelope
   const curves = JSON.stringify((await inst(id)).curves);
   await mark("charakter", "Kathedrale");
   await app.waitFor((id) => T.st.snapshot.peek().project.tracks.find((t) => t.id === id).instrument.preset === "Kathedrale", { what: "Kathedrale" }, id);
   assert.equal(JSON.stringify((await inst(id)).curves), curves);
 });
 
-test("Synth: Punkt per Doppelklick hinzufügen und ziehen", async () => {
+test("synth: add a point by double-click and drag", async () => {
   await app.reset();
   const id = await open("synth");
   await app.waitFor(() => T.$(".snd-time-head .muted")?.textContent.includes("Akkord"), { what: "Wellenform", timeout: 8000 });
   const orig = (await inst(id)).curves.laut;
   const n0 = orig.length;
-  // Mitte der Lautstärke-Spur, bei 40 % der Breite
+  // Middle of the volume track, at 40 % of the width
   const [x, y] = await app.eval(async () => {
     T.$(".snd-wave").scrollIntoView({ block: "center" });
     await T.sleep(100);
@@ -262,7 +262,7 @@ test("Synth: Punkt per Doppelklick hinzufügen und ziehen", async () => {
   }, { what: "Punkt hinzugefügt" }, id, n0);
   const idx = added.findIndex((p) => !orig.some((q) => q[0] === p[0] && q[1] === p[1]));
   assert.ok(idx > 0 && Math.abs(added[idx][1] - 0.5) < 0.2, JSON.stringify(added));
-  // den neuen Punkt nach unten ziehen
+  // drag the new point downwards
   await app.drag([x, y], [x, y + 40], { steps: 6 });
   const moved = await app.waitFor((id, idx, v0) => {
     const c = T.st.snapshot.peek().project.tracks.find((t) => t.id === id).instrument.curves.laut;
@@ -271,11 +271,11 @@ test("Synth: Punkt per Doppelklick hinzufügen und ziehen", async () => {
   assert.equal(moved.length, n0 + 1);
 });
 
-test("Anspielen: Umschalter aus · Einzelton · Muster, gemerkt", async () => {
+test("audition: switch off · single note · pattern, remembered", async () => {
   await app.reset();
   await open("drums");
-  // Vorhören abfangen: festhalten, welches Muster erklingen soll (ohne Audio)
-  // (invoke selbst ist schreibgeschützt; die Brücke liest window.__TAURI__.core bei jedem Aufruf)
+  // Intercept the preview: record which pattern should sound (without audio)
+  // (invoke itself is read-only; the bridge reads window.__TAURI__.core on every call)
   await app.eval(() => {
     if (!window.__played) {
       window.__played = [];
@@ -290,19 +290,19 @@ test("Anspielen: Umschalter aus · Einzelton · Muster, gemerkt", async () => {
   await mark("charakter", "Trap");
   await sleep(400);
   assert.deepEqual(await played(), [], "aus: nichts");
-  // Einzelschlag: Umschalten spielt gleich an, danach nach jeder Änderung
+  // Single hit: switching plays right away, afterwards after every change
   await app.clickOn(".snd-play .seg-btn[data-mode=ton]");
   await mark("charakter", "House");
   await app.waitFor(() => window.__played.length === 2, { what: "zwei Einzelschläge" });
   assert.deepEqual(await played(), ["kick", "kick"]);
-  // Muster
+  // Pattern
   await app.clickOn(".snd-play .seg-btn[data-mode=muster]");
   await mark("klangfarbe", "Staub");
   await app.waitFor(() => window.__played.length === 4, { what: "zwei Beats" });
   assert.deepEqual((await played()).slice(2), ["beat", "beat"]);
   assert.equal(await app.eval(() => JSON.parse(localStorage.getItem("klangwelt.klang.ansicht")).anspielen), "muster", "gemerkt");
   assert.equal(await app.eval(() => T.$(".snd-play .seg-btn.on").dataset.mode), "muster");
-  // Synth: Einzelton = ein langer Ton, auch nach einer Verlaufsvorlage
+  // Synth: single note = one long note, also after an envelope preset
   await open("synth");
   await app.eval(() => (window.__played.length = 0));
   await app.clickOn(".snd-play .seg-btn[data-mode=ton]");
@@ -310,11 +310,11 @@ test("Anspielen: Umschalter aus · Einzelton · Muster, gemerkt", async () => {
   await app.clickOn(".snd-vchip", { text: "Atmen" });
   await app.waitFor(() => window.__played.length === 2, { what: "Einzelton nach dem Verlauf" });
   assert.deepEqual(await played(), ["einzelton", "einzelton"]);
-  // für die übrigen Tests wieder still
+  // quiet again for the remaining tests
   await app.eval(() => T.$(".snd-play .seg-btn[data-mode=aus]").click());
 });
 
-test("Agent: Felder, Startpunkte und Verlauf", async () => {
+test("agent: fields, starting points and course", async () => {
   await app.reset();
   const { trackId } = await app.mcp("create_instrument_track", { kind: "synth" });
   const list = await app.mcp("list_instruments", {});
@@ -336,7 +336,7 @@ test("Agent: Felder, Startpunkte und Verlauf", async () => {
   assert.deepEqual((await inst(trackId)).curves.hell, [[0, 0.1], [2, 0.9]]);
   await assert.rejects(app.mcp("set_sound_field", { trackId, field: "raum", preset: "Mond" }), /Kein Startpunkt „Mond“.*Kirche/);
   await assert.rejects(app.mcp("set_sound", { trackId, verlauf: "Sturm" }), /Kein Verlauf „Sturm“/);
-  // Schlagzeug: mächtiger heißt längere Bassdrum (Messwert)
+  // Drums: more powerful means longer bass drum (measured value)
   const drums = await app.mcp("create_instrument_track", { kind: "drums" });
   const len = async (x) => {
     const m = await app.mcp("set_sound_field", { trackId: drums.trackId, field: "charakter", x, y: 0.4 });
@@ -345,6 +345,6 @@ test("Agent: Felder, Startpunkte und Verlauf", async () => {
   assert.ok((await len(1)) > (await len(0)) + 0.2, "mächtig klingt länger");
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });

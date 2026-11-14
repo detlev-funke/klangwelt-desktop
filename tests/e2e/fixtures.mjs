@@ -1,11 +1,11 @@
-// Kleine MusicXML-Stücke als Testbibliothek (werden zur Laufzeit geschrieben).
+// Small MusicXML pieces as a test library (written at runtime).
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const STEPS = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
-/** "C4:1" → <note> (Dauer in Vierteln; divisions = 2). "R:1" = Pause. */
+/** "C4:1" → <note> (duration in quarters; divisions = 2). "R:1" = rest. */
 function noteXml(spec) {
   const [name, durS = "1"] = spec.split(":");
   const dur = Math.round(Number(durS) * 2);
@@ -17,7 +17,7 @@ function noteXml(spec) {
   return `<note><pitch><step>${m[1]}</step>${alter}<octave>${m[3]}</octave></pitch><duration>${dur}</duration><type>${type}</type></note>`;
 }
 
-/** Noten (Dauer in Vierteln) auf Takte zu `beats` Vierteln verteilen. */
+/** Distributes notes (duration in quarters) over bars of `beats` quarters. */
 function measures(notes, beats) {
   const out = [];
   let cur = [];
@@ -35,7 +35,7 @@ function measures(notes, beats) {
   return out;
 }
 
-/** Partitur: parts = [{ name, clef: "G"|"F", notes: ["C4:1", …] }]. */
+/** Score: parts = [{ name, clef: "G"|"F", notes: ["C4:1", …] }]. */
 export function musicXml({ title, composer, fifths = 0, beats = 4, tempo = 100, parts }) {
   const list = parts.map((p, i) => `<score-part id="P${i + 1}"><part-name>${p.name}</part-name></score-part>`).join("");
   const body = parts
@@ -57,7 +57,7 @@ export function musicXml({ title, composer, fifths = 0, beats = 4, tempo = 100, 
 <score-partwise version="3.1"><work><work-title>${title}</work-title></work><identification><creator type="composer">${composer}</creator></identification><part-list>${list}</part-list>${body}</score-partwise>`;
 }
 
-/** Melodie, nach der die Tests suchen (Sopran des Testchorals). */
+/** Melody the tests search for (soprano of the test chorale). */
 export const CHORAL_MELODY = "C4 D4 E4 F4 G4 G4 A4 A4 A4 A4 G4";
 
 export const PIECES = [
@@ -79,13 +79,13 @@ export const PIECES = [
     tempo: 90,
     parts: [
       { name: "Flöte", notes: ["D5:1", "F#5:1", "A5:2", "G5:1", "F#5:1", "E5:2", "D5:1", "E5:1", "F#5:1", "D5:1", "E5:4"] },
-      // genug Noten, damit die Stimme in den Index kommt (sehr kurze Stimmen überspringt er)
+      // enough notes for the part to make it into the index (it skips very short parts)
       { name: "Cello", clef: "F", notes: ["D3:1", "C#3:1", "B2:1", "A2:1", "B2:1", "A2:1", "G2:1", "F#2:1", "G2:1", "A2:1", "B2:1", "C#3:1", "D3:2", "A2:2"] },
     ],
   },
 ];
 
-/** Schreibt die Teststücke in `dir` und gibt den Ordner zurück. */
+/** Writes the test pieces into `dir` and returns the folder. */
 export function writePieces(dir) {
   mkdirSync(dir, { recursive: true });
   for (const p of PIECES) writeFileSync(join(dir, p.file), musicXml(p));

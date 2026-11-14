@@ -1,12 +1,12 @@
-// Testgerüst für Ende-zu-Ende-Tests der echten Desktop-App – ohne Fremdpakete:
-// node:test als Läufer, die App (Tauri, WebView2) wird mit offenem
-// Debug-Port gestartet und über das Chrome-DevTools-Protokoll (CDP) bedient:
-// echte Maus- und Tastaturereignisse, Auswertung im Fenster, Bildschirmfotos.
+// Test harness for end-to-end tests of the real desktop app – without third-party packages:
+// node:test as the runner, the app (Tauri, WebView2) is started with an open
+// debug port and driven through the Chrome DevTools Protocol (CDP):
+// real mouse and keyboard events, evaluation in the window, screenshots.
 //
-// Jede Testdatei startet eine eigene, abgeschottete App-Instanz:
-//  * eigener Temp-Ordner für Bibliothek (KLANGWELT_BIBLIOTHEK) und WebView-Profil,
-//  * freie Ports für CDP und MCP – eine laufende Klangwelt bleibt unberührt.
-// Programm: KLANGWELT_EXE oder target/debug/klangwelt.exe.
+// Each test file starts its own, isolated app instance:
+//  * own temp folder for library (KLANGWELT_BIBLIOTHEK) and WebView profile,
+//  * free ports for CDP and MCP – a running Klangwelt is left untouched.
+// Program: KLANGWELT_EXE or target/debug/klangwelt.exe.
 
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-/** Bildschirmfotos fehlgeschlagener Tests. */
+/** Screenshots of failed tests. */
 export const OUT = join(ROOT, "tests", "e2e", "out");
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -35,13 +35,13 @@ function freePort() {
 }
 
 /**
- * Tests laufen im Hintergrund: Klangwelt legt sein Fenster dann außerhalb des
- * Bildschirms ab, ohne Taskleiste und ohne Fokus (KLANGWELT_HINTERGRUND). Damit
- * WebView2 ein solches Fenster nicht als verdeckt einstuft und das Zeichnen
- * anhält, schalten die Browser-Schalter das Drosseln ab.
- * `KLANGWELT_TESTS_SICHTBAR=1` zeigt die Fenster zum Zuschauen.
- * Testinstanzen sind stumm (`KLANGWELT_STUMM`: Wiedergabe und Pegel laufen,
- * zu hören ist nichts); `KLANGWELT_TESTS_LAUT=1` macht sie hörbar.
+ * Tests run in the background: Klangwelt then puts its window off screen,
+ * without a taskbar entry and without focus (KLANGWELT_HINTERGRUND). So that
+ * WebView2 does not classify such a window as occluded and stop rendering,
+ * the browser switches turn throttling off.
+ * `KLANGWELT_TESTS_SICHTBAR=1` shows the windows so you can watch.
+ * Test instances are muted (`KLANGWELT_STUMM`: playback and levels run,
+ * nothing is audible); `KLANGWELT_TESTS_LAUT=1` makes them audible.
  */
 const STUMM = process.env.KLANGWELT_TESTS_LAUT ? {} : { KLANGWELT_STUMM: "1" };
 export const BACKGROUND_ENV = process.env.KLANGWELT_TESTS_SICHTBAR
@@ -53,7 +53,7 @@ export const BACKGROUND_ENV = process.env.KLANGWELT_TESTS_SICHTBAR
         "--disable-features=CalculateNativeWinOcclusion --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling",
     };
 
-/** Modifier-Bits im CDP. */
+/** Modifier bits in CDP. */
 export const MOD = { alt: 1, ctrl: 2, meta: 4, shift: 8 };
 
 const KEYS = {
@@ -71,7 +71,7 @@ class App {
     this.cdpPort = cdpPort;
     this.id = 0;
     this.pending = new Map();
-    /** Fehler im Fenster (Ausnahmen, console.error) – Tests prüfen, dass keine auftreten. */
+    /** Errors in the window (exceptions, console.error) – tests check that none occur. */
     this.errors = [];
     ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data);
@@ -100,8 +100,8 @@ class App {
   }
 
   /**
-   * Im Fenster auswerten. `fn` ist eine Funktion (wird mit `args` aufgerufen,
-   * darf async sein) oder ein Ausdruck als Text. Im Fenster stehen bereit:
+   * Evaluates in the window. `fn` is a function (called with `args`, may be
+   * async) or an expression as text. Available in the window:
    * `T.st` (store.js), `T.pr` (pianoroll.js), `T.sleep`, `T.waitFor`, `T.$`, `T.$$`.
    */
   async eval(fn, ...args) {
@@ -114,7 +114,7 @@ class App {
     return r.result.value;
   }
 
-  /** Wartet, bis `fn` im Fenster einen wahren Wert liefert; gibt ihn zurück. */
+  /** Waits until `fn` returns a truthy value in the window; returns it. */
   async waitFor(fn, { timeout = 8000, interval = 60, what = "Bedingung" } = {}, ...args) {
     const end = Date.now() + timeout;
     let last;
@@ -126,12 +126,12 @@ class App {
     throw new Error(`Zeitüberschreitung beim Warten auf ${what} (zuletzt: ${JSON.stringify(last)})`);
   }
 
-  // ---------------------------------------------------------------- Eingabe
+  // ---------------------------------------------------------------- Input
   mouse(type, x, y, { mods = 0, buttons = type === "mouseReleased" || type === "mouseMoved" ? 0 : 1, button = "left" } = {}) {
     return this.send("Input.dispatchMouseEvent", { type, x, y, button, buttons, clickCount: 1, modifiers: mods });
   }
 
-  /** Ziehen mit gedrückter Maustaste; `during` läuft vor dem Loslassen (z. B. Zustand prüfen). */
+  /** Drag with the mouse button held; `during` runs before release (e.g. to check state). */
   async drag([x0, y0], [x1, y1], { mods = 0, steps = 8, during } = {}) {
     await this.mouse("mouseMoved", x0, y0, { mods });
     await this.mouse("mousePressed", x0, y0, { mods });
@@ -152,7 +152,7 @@ class App {
     await sleep(200);
   }
 
-  /** Mitte eines Elements (CSS-Selektor) – wird vorher ins Bild gerollt. */
+  /** Center of an element (CSS selector) – scrolled into view first. */
   async center(selector) {
     const r = await this.eval((sel) => {
       const el = document.querySelector(sel);
@@ -165,7 +165,7 @@ class App {
     return r;
   }
 
-  /** Element mit echter Maus anklicken (Selektor, optional mit Textfilter). */
+  /** Clicks an element with the real mouse (selector, optionally with a text filter). */
   async clickOn(selector, { text, mods = 0 } = {}) {
     const sel = text == null ? selector : await this.eval((s, t) => {
       const el = [...document.querySelectorAll(s)].find((e) => e.textContent.includes(t));
@@ -188,7 +188,7 @@ class App {
     await sleep(150);
   }
 
-  // ---------------------------------------------------------------- Sonstiges
+  // ---------------------------------------------------------------- Miscellaneous
   async shot(name) {
     mkdirSync(OUT, { recursive: true });
     const r = await this.send("Page.captureScreenshot", { format: "png" });
@@ -197,7 +197,7 @@ class App {
     return file;
   }
 
-  /** MCP-Werkzeug aufrufen (JSON-RPC über HTTP). */
+  /** Calls an MCP tool (JSON-RPC over HTTP). */
   async mcp(name, args = {}) {
     const r = await fetch(`http://127.0.0.1:${this.mcpPort}/mcp`, {
       method: "POST",
@@ -218,10 +218,10 @@ class App {
     return (await r.json()).result;
   }
 
-  /** Projekt leeren (neues Projekt, keine Auswahl, Ansicht am Anfang). */
+  /** Clears the project (new project, no selection, view at the start). */
   async reset() {
     await this.eval(async () => {
-      // Ohne Audiogerät gibt es keine Engine – Tests, die nichts abspielen, laufen trotzdem.
+      // Without an audio device there is no engine – tests that play nothing still run.
       const noEngine = (e) => {
         if (!/Audio/i.test(String(e))) throw e;
       };
@@ -239,12 +239,12 @@ class App {
     await sleep(150);
   }
 
-  /** Beendet die App, behält aber ihren Ordner – Neustart mit `startApp({ tmp: app.tmp })`. */
+  /** Quits the app but keeps its folder – restart with `startApp({ tmp: app.tmp })`. */
   async stop() {
     try {
       this.ws.close();
     } catch {
-      /* egal */
+      /* never mind */
     }
     if (this.child.exitCode == null) {
       this.child.kill();
@@ -260,7 +260,7 @@ class App {
 
   async close() {
     await this.stop();
-    // WebView2 gibt Dateien manchmal erst kurz nach dem Ende frei
+    // WebView2 sometimes releases files only shortly after exit
     for (let i = 0; i < 10; i++) {
       try {
         rmSync(this.tmp, { recursive: true, force: true });
@@ -287,16 +287,16 @@ async function connectPage(port, timeout) {
         return ws;
       }
     } catch {
-      /* noch nicht bereit */
+      /* not ready yet */
     }
     await sleep(250);
   }
   throw new Error(`App nicht erreichbar (CDP-Port ${port})`);
 }
 
-/** Startet eine abgeschottete App-Instanz und wartet, bis die Oberfläche steht.
- *  `tmp`: Ordner einer gestoppten Instanz (Neustart mit Bibliothek und Einstellungen);
- *  `prepare(bibliothek)`: legt vor dem Start etwas in ihren Bibliotheksordner.
+/** Starts an isolated app instance and waits until the UI is up.
+ *  `tmp`: folder of a stopped instance (restart with library and settings);
+ *  `prepare(bibliothek)`: puts something into its library folder before the start.
  *  `languages`: the WebView's preferred languages (navigator.languages) – German by
  *  default, because the tests check German texts (language: klangwelt/ui/src/i18n.ts). */
 export async function startApp({ tmp = mkdtempSync(join(tmpdir(), "klangwelt-e2e-")), prepare, languages = "de-DE,de" } = {}) {
@@ -323,15 +323,15 @@ export async function startApp({ tmp = mkdtempSync(join(tmpdir(), "klangwelt-e2e
   const app = new App(child, ws, tmp, mcpPort, cdpPort);
   await app.send("Runtime.enable");
   await app.send("Page.enable");
-  // Seite verhält sich wie im Vordergrund, auch ohne Fokus des Fensters
+  // Page behaves as in the foreground, even without window focus
   await app.send("Emulation.setFocusEmulationEnabled", { enabled: true });
-  // feste Fenstergröße für gleiche Abläufe
+  // fixed window size for identical runs
   await app.send("Emulation.setDeviceMetricsOverride", { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
   await injectHelpers(app);
   return app;
 }
 
-/** Wartet auf die Oberfläche und stellt die Helfer `T` in der Seite bereit (auch nach einem Neuladen). */
+/** Waits for the UI and provides the helpers `T` in the page (also after a reload). */
 export async function injectHelpers(app) {
   await app.waitFor(() => !!window.__TAURI__ && !!document.querySelector("kw-transport"), { timeout: 20000, what: "Oberfläche" });
   await app.eval(async () => {
@@ -359,7 +359,7 @@ export async function injectHelpers(app) {
 }
 
 /**
- * Test mit Bildschirmfoto bei Fehlschlag. `getApp` liefert die Instanz der Datei.
+ * Test with a screenshot on failure. `getApp` returns the file's instance.
  */
 export function makeTest(getApp) {
   return (name, fn, opts = {}) =>
@@ -373,7 +373,7 @@ export function makeTest(getApp) {
             const file = await app.shot(`${name}`);
             e.message += `\n  Bildschirmfoto: ${file}`;
           } catch {
-            /* ohne Foto */
+            /* without screenshot */
           }
         }
         throw e;
@@ -381,11 +381,11 @@ export function makeTest(getApp) {
     });
 }
 
-// ---------------------------------------------------------------- Zeitleiste
+// ---------------------------------------------------------------- Timeline
 
 /**
- * Bildschirmkoordinaten (Fensterpixel) für Schlag + Tonhöhe in einer Spur der
- * Notenansicht – aus den Modulen der App gerechnet (Spurhöhen, Tonbahnen, Zoom).
+ * Screen coordinates (window pixels) for beat + pitch in a track of the
+ * score view – computed from the app's modules (track heights, pitch lanes, zoom).
  */
 export async function noteGeo(app, trackId) {
   return app.eval((id) => {

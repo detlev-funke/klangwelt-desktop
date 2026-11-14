@@ -1,5 +1,5 @@
-// Arbeitsumgebung: Fenster-Menü, Einstellungen (Tonachse), Clip-Fenster, Ausdruck
-// (Anschlag malen, Alt+Ziehen), Audio-Analyse der Demo, Klang-Fenster (Klangformung).
+// Workspace: Window menu, settings (pitch axis), clip window, expression
+// (painting velocity, Alt+drag), audio analysis of the demo, Sound window (sound shaping).
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startApp, makeTest, noteGeo, geoFns, MOD } from "./harness.mjs";
@@ -13,7 +13,7 @@ after(async () => {
   await app?.close();
 });
 
-/** Instrumentspur in Notenansicht mit 4 Noten (Anschlag 100), Ansicht 80 px/Schlag. */
+/** Instrument track in score view with 4 notes (velocity 100), view 80 px/beat. */
 async function noteTrack() {
   return app.eval(async () => {
     await T.st.run({ type: "addTrack", track: { id: 0, name: "Ausdruck", kind: "instrument" } });
@@ -29,7 +29,7 @@ async function noteTrack() {
 }
 const velocities = (id) => app.eval((id) => T.st.snapshot.peek().project.tracks.find((t) => t.id === id).clips[0].source.notes.map((n) => n.velocity), id);
 
-test("Fenster-Menü blendet ein Fenster aus und wieder ein", async () => {
+test("window menu hides a window and shows it again", async () => {
   await app.clickOn("kw-transport .btn", { text: "Fenster" });
   await app.clickOn(".win-menu .menu-item.win", { text: "Bibliothek" });
   await app.waitFor(() => !T.$$(".dk-tab").some((t) => t.textContent.includes("Bibliothek")), { what: "Bibliothek ausgeblendet" });
@@ -38,7 +38,7 @@ test("Fenster-Menü blendet ein Fenster aus und wieder ein", async () => {
   await app.waitFor(() => T.$$(".dk-tab").some((t) => t.textContent.includes("Bibliothek")), { what: "Bibliothek wieder da" });
 });
 
-test("Andocken: unter dem Ziel-Kreuz verblasst der Inhalt der Zielfläche", async () => {
+test("docking: under the target cross the content of the target area fades", async () => {
   const tab = await app.eval(() => {
     const t = T.$$(".dk-tab").find((x) => x.textContent.includes("Analyse"));
     const r = t.getBoundingClientRect();
@@ -60,7 +60,7 @@ test("Andocken: unter dem Ziel-Kreuz verblasst der Inhalt der Zielfläche", asyn
           cross: T.$$(".dk-target.show").length,
         };
       });
-      // abbrechen: das Layout bleibt
+      // cancel: the layout stays
       await app.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
       await app.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
       return v;
@@ -73,7 +73,7 @@ test("Andocken: unter dem Ziel-Kreuz verblasst der Inhalt der Zielfläche", asyn
   assert.ok(await app.eval(() => T.$$(".dk-tab").some((t) => t.textContent.includes("Analyse"))), "Analyse noch da");
 });
 
-test("Einstellungen: Tonachse umschalten", async () => {
+test("settings: switch the pitch axis", async () => {
   const before = await app.eval(() => T.pr.highOnTop.peek());
   await app.clickOn("kw-transport .btn.icon[title='Einstellungen']");
   await app.clickOn(".set-option", { text: before ? "Tiefe Töne oben" : "Hohe Töne oben" });
@@ -83,7 +83,7 @@ test("Einstellungen: Tonachse umschalten", async () => {
   assert.equal(await app.eval(() => T.pr.highOnTop.peek()), before);
 });
 
-test("Clip-Fenster erklärt die Bedienung (Alt+Klick setzt Noten)", async () => {
+test("clip window explains the controls (Alt+click places notes)", async () => {
   await app.reset();
   const id = await noteTrack();
   await app.eval((id) => {
@@ -95,10 +95,10 @@ test("Clip-Fenster erklärt die Bedienung (Alt+Klick setzt Noten)", async () => 
   assert.match(hint, /Auswahlrahmen/);
 });
 
-test("Ausdrucksspur: Anschlag über mehrere Noten malen", async () => {
+test("expression track: paint velocity across several notes", async () => {
   await app.reset();
   const id = await noteTrack();
-  // Ausdrucksspur ist standardmäßig an – nur einblenden, falls ausgeblendet
+  // Expression track is on by default – only show it if hidden
   if (!(await app.eval(() => T.$("kw-tracks .toggle.v.x").classList.contains("on")))) await app.clickOn("kw-tracks .toggle.v.x");
   const lane = await app.waitFor((id) => {
     const p = T.st.snapshot.peek().project;
@@ -109,17 +109,17 @@ test("Ausdrucksspur: Anschlag über mehrere Noten malen", async () => {
     const rowY = c.y + T.st.RULER_H + T.pr.rowTops(p.tracks)[i] - T.st.viewport.peek().scrollY;
     return { x: c.x, top: rowY + g.exprTop, h: g.exprH };
   }, { what: "Ausdrucksspur" }, id);
-  // knapp über dem Boden der Spur = leise
+  // just above the floor of the track = quiet
   const y = lane.top + lane.h - 4;
   await app.drag([lane.x + 5, y], [lane.x + 80 * 3.5, y]);
   const v = await velocities(id);
   assert.ok(v.every((x) => x < 40), `alle leiser: ${v}`);
-  // Knopf blendet die Ausdrucksspur aus (ein Klick genügt)
+  // Button hides the expression track (one click is enough)
   await app.clickOn("kw-tracks .toggle.v.x");
   await app.waitFor((id) => !T.pr.geoFor(T.st.snapshot.peek().project.tracks.find((t) => t.id === id)).exprH, { what: "Ausdrucksspur aus" }, id);
 });
 
-test("Alt+Ziehen auf einer Note ändert ihren Anschlag", async () => {
+test("Alt+drag on a note changes its velocity", async () => {
   await app.reset();
   const id = await noteTrack();
   const g = geoFns(await noteGeo(app, id));
@@ -129,7 +129,7 @@ test("Alt+Ziehen auf einer Note ändert ihren Anschlag", async () => {
   assert.equal(v[0], 100, "andere Noten unverändert");
 });
 
-test("Demo: Audio-Clip analysieren zeigt Tonart, Tempo und Noten", async () => {
+test("demo: analyzing an audio clip shows key, tempo and notes", async () => {
   await app.reset();
   await app.eval(() => T.st.act(window.__TAURI__.core.invoke("create_demo")));
   await app.eval(() => {
@@ -146,7 +146,7 @@ test("Demo: Audio-Clip analysieren zeigt Tonart, Tempo und Noten", async () => {
   assert.match(facts, /Noten/);
 });
 
-test("Klang-Fenster: Startpunkt wählen und Muster einfügen", async () => {
+test("sound window: choose a starting point and insert a pattern", async () => {
   await app.reset();
   const r = await app.mcp("create_instrument_track", { kind: "bass" });
   await app.eval((id) => {
@@ -163,7 +163,7 @@ test("Klang-Fenster: Startpunkt wählen und Muster einfügen", async () => {
   await app.waitFor((id, n) => T.st.snapshot.peek().project.tracks.find((t) => t.id === id).clips.length === n + 1, { what: "Muster" }, r.trackId, clips);
 });
 
-test("Klangformung: Wärme, Schwebung, Farbe, Rauheit, Breite und Entfernung für jedes Instrument", async () => {
+test("sound shaping: warmth, beating, color, roughness, width and distance for every instrument", async () => {
   const list = await app.mcp("list_instruments", {});
   const text = JSON.stringify(list);
   for (const key of ["waerme", "schwebung", "raum", "farbe", "rauheit", "breite"]) assert.ok(text.includes(key), `list_instruments nennt ${key}`);
@@ -179,7 +179,7 @@ test("Klangformung: Wärme, Schwebung, Farbe, Rauheit, Breite und Entfernung fü
       return [of("Klangformung"), of("Klangfarbe"), of("Raum")];
     });
     assert.deepEqual(labels, [["Wärme", "Schwebung"], ["Farbe", "Rauheit"], ["Breite", "Entfernung"]]);
-    // Entfernung hochziehen: landet als „raum“ im Instrument der Spur
+    // Pull up the distance: ends up as "raum" in the track's instrument
     await app.eval(() => {
       const g = T.$$(".sound .pgroup").find((x) => x.querySelector("h4")?.textContent === "Raum");
       const raum = [...g.querySelectorAll(".slider")].find((x) => x.textContent.includes("Entfernung")).querySelector("input");
@@ -193,7 +193,7 @@ test("Klangformung: Wärme, Schwebung, Farbe, Rauheit, Breite und Entfernung fü
     }, { what: "Raum gesetzt" }, r.trackId);
     assert.equal(raum, 0.9);
   }
-  // auch per Agent einstellbar
+  // also adjustable via agent
   const t = await app.mcp("create_instrument_track", { kind: "bass" });
   await app.mcp("set_sound", { trackId: t.trackId, params: { waerme: 0.8, raum: 0.4 } });
   const p = await app.waitFor((id) => {
@@ -203,6 +203,6 @@ test("Klangformung: Wärme, Schwebung, Farbe, Rauheit, Breite und Entfernung fü
   assert.equal(p.raum, 0.4);
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });

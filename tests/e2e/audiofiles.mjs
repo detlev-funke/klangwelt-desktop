@@ -1,9 +1,9 @@
-// Audiodateien für Tests (zur Laufzeit geschrieben): WAV in verschiedenen
-// Formen, eine gesungene Melodie und ein einfacher Schlagzeug-Takt.
+// Audio files for tests (written at runtime): WAV in various forms,
+// a sung melody and a simple drum bar.
 
 import { writeFileSync } from "node:fs";
 
-/** WAV schreiben: `channels` = Liste von Sample-Feldern (−1…1), 16 oder 24 Bit (24 als WAVE_FORMAT_EXTENSIBLE). */
+/** Writes a WAV: `channels` = list of sample arrays (−1…1), 16 or 24 bit (24 as WAVE_FORMAT_EXTENSIBLE). */
 export function writeWav(path, channels, sr, bits = 16) {
   const ch = channels.length;
   const n = channels[0].length;
@@ -43,7 +43,7 @@ export function writeWav(path, channels, sr, bits = 16) {
   writeFileSync(path, Buffer.concat([head, data]));
 }
 
-/** „Gesungene“ Melodie (Grundton + Obertöne, Vibrato); je Ton [MIDI, Sekunden], dazwischen 40 ms Pause. */
+/** "Sung" melody (fundamental + overtones, vibrato); each note [MIDI, seconds], with a 40 ms pause between. */
 export function sing(notes, sr) {
   const out = [];
   let phase = 0;
@@ -62,7 +62,7 @@ export function sing(notes, sr) {
   return out;
 }
 
-/** Einfacher Zufall (wiederholbar). */
+/** Simple random numbers (repeatable). */
 function rng(seed) {
   let s = seed >>> 0;
   return () => {
@@ -72,8 +72,8 @@ function rng(seed) {
 }
 
 /**
- * Schlagzeug: `steps` Sechzehntel bei `bpm`; `pattern` = { kick: [Schritte], snare: [...], hat: [...] }.
- * Bassdrum = Sinus mit fallender Tonhöhe, Snare = Kesselton + Rauschen, Hi-Hat = hochpassiges Rauschen.
+ * Drums: `steps` sixteenths at `bpm`; `pattern` = { kick: [steps], snare: [...], hat: [...] }.
+ * Bass drum = sine with falling pitch, snare = shell tone + noise, hi-hat = high-passed noise.
  */
 export function drums(pattern, steps, bpm, sr) {
   const step = 60 / bpm / 4;
@@ -99,7 +99,7 @@ export function drums(pattern, steps, bpm, sr) {
     let prev2 = 0;
     add(s * step, 0.06, (t) => {
       const x = rand();
-      const hp = x - 2 * prev + prev2; // zweifach differenziert: nur Höhen
+      const hp = x - 2 * prev + prev2; // differentiated twice: highs only
       prev2 = prev;
       prev = x;
       return 0.25 * Math.exp(-t / 0.02) * hp;

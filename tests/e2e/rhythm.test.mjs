@@ -1,9 +1,9 @@
-// Rhythmus-Fenster: Genre-Muster als Schnelleinstieg, Schritt-Raster als
-// Eingabehilfe. Entwurf → „In Spur schreiben“ (neue Schlagzeug-Spur mit dem
-// Klang des Genres), danach bearbeitet das Raster den Clip (ein Klick = ein
-// Rückgängig-Schritt); ein ausgewählter Schlagzeug-Clip wird gelesen, Muster
-// ersetzen ihn, Takte und Swing ändern ihn; Anhören mit laufender Spalte;
-// neue Trommeln; „Mit Beat starten“ im leeren Projekt; dasselbe per Agent.
+// Rhythm window: genre patterns as a quick start, step grid as an
+// input aid. Draft → "Write to track" (new drums track with the
+// genre's sound), after that the grid edits the clip (one click = one
+// undo step); a selected drums clip is read, patterns
+// replace it, bars and swing change it; listening with a running column;
+// new drums; "Start with a beat" in the empty project; the same via agent.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startApp, makeTest, sleep } from "./harness.mjs";
@@ -25,7 +25,7 @@ async function openPanel() {
 }
 const genre = (name) => app.clickOn(".rh-genre", { text: name });
 const pattern = (name) => app.clickOn(`.rh-pattern[data-name="${name}"]`);
-/** gesetzte Schritte je Zeile (sichtbare Seite) */
+/** set steps per row (visible page) */
 const shown = () => app.eval(() => {
   const out = {};
   for (const c of T.$$(".rh-step.on")) (out[c.dataset.row] ??= []).push(Number(c.dataset.step));
@@ -33,7 +33,7 @@ const shown = () => app.eval(() => {
 });
 const step = (row, s) => app.clickOn(`.rh-step[data-row="${row}"][data-step="${s}"]`);
 
-test("Genres und Muster: Klick lädt das Muster ins Raster, Tempo lässt sich übernehmen", async () => {
+test("genres and patterns: click loads the pattern into the grid, tempo can be adopted", async () => {
   await app.reset();
   await openPanel();
   const genres = await app.eval(() => T.$$(".rh-genre").map((b) => b.textContent));
@@ -46,12 +46,12 @@ test("Genres und Muster: Klick lädt das Muster ins Raster, Tempo lässt sich ü
   assert.deepEqual(await shown(), { kick: [0, 4, 8, 12], clap: [4, 12], hho: [2, 6, 10, 14] });
   assert.equal(await app.eval(() => T.$(".rh-pattern.on")?.dataset.name), "Classic House");
   assert.match(await app.eval(() => T.$(".rh-about").textContent), /Classic House:/);
-  // Tempo der Vorlage übernehmen
+  // Adopt the template's tempo
   assert.match(await app.eval(() => T.$(".rh-tempo-btn").textContent), /Tempo 124 übernehmen/);
   await app.clickOn(".rh-tempo-btn");
   await app.waitFor(() => T.st.snapshot.peek().project.tempoBpm === 124, { what: "Tempo 124" });
   assert.equal(await app.eval(() => T.$(".rh-tempo-btn").hidden), true);
-  // Schritt im Entwurf: Markierung des Musters verschwindet
+  // Step in the draft: the pattern's highlight disappears
   await step("rim", 3);
   assert.deepEqual((await shown()).rim, [3]);
   assert.equal(await app.eval(() => T.$(".rh-pattern.on")), null);
@@ -59,7 +59,7 @@ test("Genres und Muster: Klick lädt das Muster ins Raster, Tempo lässt sich ü
   assert.equal(await app.eval(() => T.$(".rh-pattern.on")?.dataset.name), "Classic House");
 });
 
-test("In Spur schreiben: neue Schlagzeug-Spur mit Genre-Klang, danach bearbeitet das Raster den Clip", async () => {
+test("write to track: new drum track with genre sound, afterwards the grid edits the clip", async () => {
   await app.reset();
   await openPanel();
   await genre("Trap");
@@ -78,7 +78,7 @@ test("In Spur schreiben: neue Schlagzeug-Spur mit Genre-Klang, danach bearbeitet
   assert.equal(clip.source.notes.filter((n) => n.pitch === 39).length, 1, "ein Clap auf der 3");
   await app.waitFor(() => T.$(".rh-badge").textContent === "Clip", { what: "Raster gebunden" });
   assert.equal(await app.eval(() => T.$(".rh-write").hidden), true);
-  // Schritt setzen = Note im Clip, ein Rückgängig-Schritt
+  // Setting a step = note in the clip, one undo step
   const n0 = clip.source.notes.length;
   await step("cow", 6).catch(async () => {
     await app.clickOn(".rh-more");
@@ -93,19 +93,19 @@ test("In Spur schreiben: neue Schlagzeug-Spur mit Genre-Klang, danach bearbeitet
   await app.waitFor(() => !T.$('.rh-step[data-row="cow"][data-step="6"]')?.classList.contains("on"), { what: "Raster folgt dem Rückgängig" });
 });
 
-test("Ausgewählter Schlagzeug-Clip: gelesen, Muster ersetzt ihn, Takte und Swing ändern ihn", async () => {
+test("selected drum clip: read, pattern replaces it, bars and swing change it", async () => {
   await app.reset();
   const { trackId } = await app.mcp("create_instrument_track", { kind: "drums" });
   const clipId = (await track(trackId)).clips[0].id;
   await openPanel();
   await app.eval((s) => (T.st.selection.value = s), { trackId, clipId });
   await app.waitFor(() => T.$(".rh-badge").textContent === "Clip", { what: "gebunden" });
-  // das 4-taktige Beispielmuster: vier Seiten
+  // the 4-bar example pattern: four pages
   await app.waitFor(() => T.$$(".rh-pages .seg-btn").length === 4 && !T.$(".rh-pages").hidden, { what: "vier Takte" });
   assert.ok(Object.keys(await shown()).includes("kick"));
   await app.clickOn('.rh-pages .seg-btn[data-page="2"]');
   assert.ok(await app.eval(() => T.$$(".rh-step").every((c) => Number(c.dataset.step) >= 32 && Number(c.dataset.step) < 48)), "Takt 3 sichtbar");
-  // Muster ersetzt den Clip (vier Takte bleiben)
+  // Pattern replaces the clip (four bars remain)
   await genre("Techno");
   await pattern("Techno");
   await app.waitFor((t, c) => T.st.snapshot.peek().project.tracks.find((x) => x.id === t).clips.find((x) => x.id === c).name === "Techno", { what: "Clip ist Techno" }, trackId, clipId);
@@ -113,11 +113,11 @@ test("Ausgewählter Schlagzeug-Clip: gelesen, Muster ersetzt ihn, Takte und Swin
   assert.equal(clip.source.lengthBeats, 16);
   assert.equal(clip.source.notes.filter((n) => n.pitch === 36).length, 20, "5 Kicks × 4 Takte");
   await app.waitFor(() => T.$(".rh-pattern.on")?.dataset.name === "Techno", { what: "Muster erkannt" });
-  // ein Takt
+  // one bar
   await app.clickOn('.rh-bars .seg-btn[data-bars="1"]');
   await app.waitFor((t, c) => T.st.snapshot.peek().project.tracks.find((x) => x.id === t).clips.find((x) => x.id === c).source.lengthBeats === 4, { what: "ein Takt" }, trackId, clipId);
   assert.equal(await app.eval(() => T.$(".rh-pages").hidden), true);
-  // Swing: die Hi-Hat auf Schritt 10 (ungerade Sechzehntel) rückt nach hinten, die Kicks bleiben
+  // Swing: the hi-hat on step 10 (odd sixteenth) moves back, the kicks stay
   await app.eval(() => {
     const r = T.$(".rh-swing");
     r.dispatchEvent(new PointerEvent("pointerdown"));
@@ -129,14 +129,14 @@ test("Ausgewählter Schlagzeug-Clip: gelesen, Muster ersetzt ihn, Takte und Swin
   clip = (await track(trackId)).clips.find((c) => c.id === clipId);
   assert.deepEqual(clip.source.notes.filter((n) => n.pitch === 36).map((n) => n.startBeats), [0, 1, 2, 3, 3.5]);
   await app.waitFor(() => T.$(".rh-swing-val").textContent === "50 %", { what: "Swing gelesen" });
-  // das Raster zeigt den geswingten Clip unverändert als Techno
+  // the grid shows the swung clip unchanged as Techno
   assert.deepEqual((await shown()).kick, [0, 4, 8, 12, 14]);
 });
 
-test("Weitere Trommeln: ausgeblendet, bis sie gebraucht oder aufgeklappt werden", async () => {
+test("more drums: hidden until needed or expanded", async () => {
   await app.reset();
   await openPanel();
-  // „weitere Trommeln“ ist gemerkt – zu Beginn zuklappen
+  // "more drums" is remembered – collapse at the start
   if (await app.eval(() => T.$(".rh-more").textContent.startsWith("weniger"))) await app.clickOn(".rh-more");
   await genre("Grundlagen");
   await pattern("Boots ’n’ Cats");
@@ -154,12 +154,12 @@ test("Weitere Trommeln: ausgeblendet, bis sie gebraucht oder aufgeklappt werden"
   assert.equal((await rows()).length, 7);
 });
 
-test("Anhören: spielt im Projekttempo, die Spalte läuft mit, Stopp beendet", async () => {
+test("listen: plays at the project tempo, the column follows along, stop ends it", async () => {
   await app.reset();
   await openPanel();
   await genre("House");
   await pattern("Classic House");
-  // Vorhören abfangen (ohne Audio): Argumente festhalten, 1,2 s Dauer melden
+  // Intercept the preview (without audio): record the arguments, report a duration of 1.2 s
   await app.eval(() => {
     window.__rh = [];
     const core = window.__TAURI__.core;
@@ -190,7 +190,7 @@ test("Anhören: spielt im Projekttempo, die Spalte läuft mit, Stopp beendet", a
   }
 });
 
-test("Leeres Projekt: „Mit Beat starten ▾“ legt eine Vorlage als Schlagzeug-Spur an", async () => {
+test("empty project: “Start with a beat ▾” creates a template as a drum track", async () => {
   await app.reset();
   await app.waitFor(() => T.$(".empty-hint .beat-start")?.checkVisibility(), { what: "Knopf im leeren Projekt" });
   await app.clickOn(".empty-hint .beat-start");
@@ -208,19 +208,19 @@ test("Leeres Projekt: „Mit Beat starten ▾“ legt eine Vorlage als Schlagzeu
   assert.equal(clip.source.lengthBeats, 16, "vier Takte");
   await app.waitFor(() => T.$(".rh-badge")?.textContent === "Clip" && T.$(".rh").checkVisibility(), { what: "Rhythmus-Fenster zeigt den Clip" });
   assert.equal(await app.eval(() => T.$(".beat-menu")?.classList.contains("open") ?? false), false, "Menü zu");
-  // ein Rückgängig-Schritt: wieder leer, Tempo zurück
+  // one undo step: empty again, tempo back
   await app.eval(() => T.st.act(window.__TAURI__.core.invoke("undo")));
   await app.waitFor(() => T.st.snapshot.peek().project.tracks.length === 0 && T.st.snapshot.peek().project.tempoBpm === 120, { what: "wieder leer" });
 });
 
-test("Neue Trommeln: Rim, Crash, Ride, Cowbell, Shaker in der Notenrolle", async () => {
+test("new drums: rim, crash, ride, cowbell, shaker in the piano roll", async () => {
   const list = await app.mcp("list_instruments", {});
   const drums = list.instrumente.find((s) => s.kind === "drums");
   const keys = Object.fromEntries(drums.keys.map((k) => [k.midi, k.name]));
   assert.deepEqual([keys[37], keys[49], keys[51], keys[56], keys[70]], ["Rim", "Crash", "Ride", "Cowbell", "Shaker"]);
 });
 
-test("Agent: Muster auflisten, schreiben, lesen", async () => {
+test("agent: list, write and read patterns", async () => {
   await app.reset();
   const list = await app.mcp("list_drum_patterns", { genre: "house" });
   assert.equal(list.genres.length, 1);
@@ -236,20 +236,20 @@ test("Agent: Muster auflisten, schreiben, lesen", async () => {
   assert.equal(r.takte, 4);
   assert.equal(r.zeilen.kick, "x...x...x...x...".repeat(4));
   assert.equal(r.nichtImRaster, 0);
-  // eigene Zeilen in dieselbe Spur: neuer Clip hinter dem letzten
+  // own rows into the same track: new clip after the last one
   const own = await app.mcp("write_drum_pattern", { trackId: w.trackId, rows: { kick: "x.......x.......", snare: [5, 13] }, bars: 1, swing: 30 });
   assert.equal(own.startBeats, 16);
   const t2 = await track(w.trackId);
   assert.equal(t2.clips.length, 2);
   assert.equal((await app.mcp("read_drum_pattern", { trackId: w.trackId, clipId: own.clipId })).swing, 0, "keine ungeraden Schritte – kein Swing messbar");
-  // Fehler mit Hinweis
+  // error with a hint
   await assert.rejects(app.mcp("write_drum_pattern", { genre: "Polka" }), /Kein Genre „Polka“/);
   await assert.rejects(app.mcp("write_drum_pattern", { rows: { gong: "x" } }), /Unbekannte Trommel „gong“/);
-  await assert.rejects(app.mcp("write_drum_pattern", {}), /genre\/pattern oder rows/);
+  await assert.rejects(app.mcp("write_drum_pattern", {}), /genre\/pattern or rows/);
   await assert.rejects(app.mcp("read_drum_pattern", { trackId: w.trackId, clipId: 999 }), /nicht gefunden/);
   await sleep(10);
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });

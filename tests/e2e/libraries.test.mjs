@@ -1,7 +1,7 @@
-// Bibliotheken: Umzug der alten Indizes je Paketordner in „Standard“, eigene
-// Bibliotheken anlegen, wechseln (getrennte Indizes – keine gemeinsame Suche),
-// umbenennen, löschen, Paket aus dem Ordner übernehmen, Neustart behält die
-// aktive Bibliothek, dasselbe per Agent.
+// Libraries: migrating the old per-package-folder indexes into "Standard", creating
+// libraries of your own, switching (separate indexes – no shared search),
+// renaming, deleting, importing a package from the folder, restart keeps the
+// active library, the same via the agent.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -19,7 +19,7 @@ const OWN_PIECE = {
   parts: [{ name: "Gesang", notes: ["E4:1", "G4:1", "C5:2", "B4:1", "A4:1", "G4:2", "F4:1", "E4:1", "D4:2", "C4:4"] }],
 };
 
-/** Bibliotheksordner wie vor der Bibliotheksliste: je Paketordner ein eigener Index. */
+/** Library folder as before the library list: one index of its own per package folder. */
 function oldLayout(root) {
   const build = (dir) => execFileSync(EXE, ["index", "build", dir, join(dir, OLD)], { stdio: "ignore" });
   build(writePieces(join(root, "PDMX")));
@@ -28,7 +28,7 @@ function oldLayout(root) {
   mkdirSync(own, { recursive: true });
   writeFileSync(join(own, "eigenes-lied.musicxml"), musicXml(OWN_PIECE));
   build(own);
-  // ein Paket, das im Ordner liegt, aber noch in keiner Bibliothek ist
+  // a package that is in the folder but not yet in any library
   writePieces(join(root, "DCML-Klassik"));
 }
 
@@ -49,7 +49,7 @@ const idle = (what, timeout = 60000) =>
     const i = await window.__TAURI__.core.invoke("library_info");
     return i.id && !i.loading && !i.adding && !i.building && i.merging == null && !i.download ? i : null;
   }, { timeout, what });
-/** Melodiesuche in der aktiven Bibliothek: Titel der Treffer. */
+/** Melody search in the active library: titles of the hits. */
 const melodyHits = () => app.eval(async (melody) => (await window.__TAURI__.core.invoke("library_search", { melody })).map((h) => h.title), CHORAL_MELODY);
 const openManage = async () => {
   await app.eval(() => T.st.showPanel("bibliothek"));
@@ -62,7 +62,7 @@ const clickRow = (id, label) => app.eval((id, label) => {
   [...r.querySelectorAll(".btn")].find((b) => b.textContent.includes(label)).click();
 }, id, label);
 
-test("Umzug: „Standard“ entsteht aus den alten Indizes, Kostprobe wird eigene Bibliothek", async () => {
+test("migration: “Standard” is created from the old indexes, sample becomes its own library", async () => {
   const info = await idle("Bibliothek eingerichtet", 30000);
   assert.equal(info.name, "Standard");
   assert.equal(info.scores, 3, "PDMX (2) + Eigene (1)");
@@ -75,28 +75,28 @@ test("Umzug: „Standard“ entsteht aus den alten Indizes, Kostprobe wird eigen
   assert.equal(std.paths.length, 1);
   assert.match(std.paths[0], /Eigene$/);
   assert.equal(reg.libraries[1].scores, 2);
-  // alte Indexdateien sind weg (bzw. verschoben), Partituren bleiben
+  // old index files are gone (or moved), scores remain
   for (const f of ["PDMX", "Eigene", "PDMX-Kostprobe"]) assert.equal(existsSync(join(root(), f, OLD)), false, `${f}: alter Index weg`);
   assert.ok(existsSync(join(root(), "Eigene", "eigenes-lied.musicxml")));
   assert.ok(existsSync(join(root(), "Indizes", "Standard.kwix")));
-  // gefunden wird aus beiden Teilen
+  // found from both parts
   assert.ok((await melodyHits()).includes("Testchoral"));
   const own = await app.eval(async () => (await window.__TAURI__.core.invoke("library_search", { text: "Eigenes Lied" })).map((h) => h.title));
   assert.deepEqual([...new Set(own)], ["Eigenes Lied"]);
 });
 
-test("Dialog „Bibliotheken“ zeigt alle, die aktive markiert", async () => {
+test("“Libraries” dialog shows all, the active one marked", async () => {
   await openManage();
   const r = await rows();
   assert.deepEqual(r.map((x) => x.id), ["standard", "pdmx-kostprobe"]);
   assert.ok(r[0].active && !r[1].active);
   assert.match(r[0].text, /3 Partituren · Paket: PDMX – vollständig · 1 Ordner\/Datei/);
-  // Standard lässt sich nicht löschen, die andere schon
+  // Standard cannot be deleted, the other one can
   const del = await app.eval(() => T.$$(".lib-lib").map((x) => [...x.querySelectorAll(".btn")].some((b) => b.textContent.includes("Löschen"))));
   assert.deepEqual(del, [false, true]);
 });
 
-test("Neu anlegen macht die leere Bibliothek aktiv – ihre Suche ist getrennt", async () => {
+test("creating new makes the empty library active – its search is separate", async () => {
   await app.eval(() => {
     T.$(".lib-new input").value = "Versuch";
     T.$$(".lib-new .btn").find((b) => b.textContent.includes("Neu anlegen")).click();
@@ -113,7 +113,7 @@ test("Neu anlegen macht die leere Bibliothek aktiv – ihre Suche ist getrennt",
   assert.ok(existsSync(join(root(), "Indizes", "Versuch.kwix")));
 });
 
-test("Hinzufügen landet in der aktiven Bibliothek, „Standard“ bleibt unverändert", async () => {
+test("adding lands in the active library, “Standard” stays unchanged", async () => {
   await app.mcp("add_to_library", { paths: [join(root(), "Eigene", "eigenes-lied.musicxml")] });
   const info = await idle("übernommen");
   assert.equal(info.name, "Versuch");
@@ -121,7 +121,7 @@ test("Hinzufügen landet in der aktiven Bibliothek, „Standard“ bleibt unver�
   assert.equal(registry().libraries.find((l) => l.id === "standard").scores, 3);
 });
 
-test("Wechseln: zurück zu „Standard“ – Treffer wieder da", async () => {
+test("switching: back to “Standard” – hits are back", async () => {
   await openManage();
   await clickRow("standard", "Wechseln");
   await app.waitFor(async () => (await window.__TAURI__.core.invoke("library_info")).name === "Standard", { what: "gewechselt" });
@@ -130,7 +130,7 @@ test("Wechseln: zurück zu „Standard“ – Treffer wieder da", async () => {
   assert.equal(registry().active, "standard");
 });
 
-test("Umbenennen und Löschen (zweimal klicken) – Partituren bleiben", async () => {
+test("rename and delete (click twice) – scores remain", async () => {
   await openManage();
   await clickRow("versuch", "Umbenennen");
   await app.eval(() => {
@@ -149,7 +149,7 @@ test("Umbenennen und Löschen (zweimal klicken) – Partituren bleiben", async (
   await app.eval(() => T.$(".lib-manage .lib-catalog-head .btn").click());
 });
 
-test("Katalog: ein Paket im Ordner wird übernommen, danach „in Standard“", async () => {
+test("catalog: a package in the folder is adopted, afterwards “to Standard”", async () => {
   await app.eval(() => {
     T.st.showPanel("bibliothek");
     if (!T.$(".lib-catalog:not([hidden])")) T.$$(".lib-bar .btn").find((b) => b.textContent.includes("Herunterladen")).click();
@@ -160,14 +160,14 @@ test("Katalog: ein Paket im Ordner wird übernommen, danach „in Standard“", 
   });
   await app.waitFor(() => T.$$(".lib-card").length > 3, { what: "Katalog" });
   assert.deepEqual(await card(), { tag: "im Ordner", btn: "Übernehmen", disabled: false });
-  // PDMX – vollständig ist enthalten, Kostprobe und Auswahl damit auch
+  // PDMX – the full one is included, so are sample and selection
   const pdmx = await app.eval(() => T.$$(".lib-card").filter((x) => x.querySelector(".lib-card-title").textContent.startsWith("PDMX")).map((x) => x.querySelector(".tag")?.textContent));
   assert.deepEqual(pdmx, ["in „Standard“", "in „Standard“", "in „Standard“"]);
   await app.eval(() => {
     const c = T.$$(".lib-card").find((x) => x.querySelector(".lib-card-title").textContent.startsWith("Klassik, analysiert"));
     c.querySelector(".lib-card-foot .btn").click();
   });
-  // zwei Stücke aus dem DCML-Ordner (andere Pfade als in PDMX)
+  // two pieces from the DCML folder (different paths than in PDMX)
   const info = await app.waitFor(async () => {
     const i = await window.__TAURI__.core.invoke("library_info");
     return i.scores === 5 && !i.building && i.merging == null ? i : null;
@@ -180,12 +180,12 @@ test("Katalog: ein Paket im Ordner wird übernommen, danach „in Standard“", 
   assert.deepEqual(registry().libraries[0].packs, ["pdmx-voll", "dcml-klassik"]);
   assert.equal(existsSync(join(root(), "DCML-Klassik", "klangwelt-auftrag.json")), false, "Auftrag erledigt");
   await app.eval(() => T.$(".lib-catalog-head .btn").click());
-  // schon enthalten: wird nicht nochmal übernommen
+  // already included: is not imported again
   await assert.rejects(app.mcp("download_library", { id: "dcml-klassik" }), /„DCML – Klassik, analysiert“ ist in „Standard“ schon enthalten/);
   await assert.rejects(app.mcp("download_library", { id: "pdmx-kostprobe" }), /schon enthalten \(über „PDMX – vollständig“\)/);
 });
 
-test("Agent: auflisten, anlegen, wechseln, löschen", async () => {
+test("agent: list, create, switch, delete", async () => {
   const list = await app.mcp("list_libraries", {});
   assert.deepEqual(list.map((l) => [l.name, l.active]), [["Standard", true], ["PDMX – Kostprobe", false]]);
   const made = await app.mcp("create_library", { name: "Agent-Versuch" });
@@ -200,7 +200,7 @@ test("Agent: auflisten, anlegen, wechseln, löschen", async () => {
   assert.deepEqual((await app.mcp("list_libraries", {})).map((l) => l.name), ["Standard", "PDMX – Kostprobe"]);
 });
 
-test("Neustart: die aktive Bibliothek bleibt aktiv (ohne Parameter, ohne Oberfläche)", async () => {
+test("restart: the active library stays active (without parameter, without UI)", async () => {
   assert.equal((await libInfo()).name, "PDMX – Kostprobe");
   const errors = app.errors;
   await app.stop();
@@ -214,6 +214,6 @@ test("Neustart: die aktive Bibliothek bleibt aktiv (ohne Parameter, ohne Oberfl�
   assert.equal((await libInfo()).scores, 5);
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });

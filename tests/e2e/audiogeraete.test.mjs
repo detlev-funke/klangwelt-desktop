@@ -1,8 +1,8 @@
-// Audiogeräte: Der Lautsprecher-Knopf oben öffnet die Wahl des Ausgabegeräts,
-// der Mikrofon-Knopf daneben die des Aufnahmegeräts. „Systemstandard“ steht
-// oben; die Wahl wirkt sofort (die Wiedergabe läuft auf dem neuen Gerät
-// weiter), landet in den Einstellungen und gilt nach einem Neustart. Fehlt das
-// gemerkte Gerät beim Start, spielt der Systemstandard, und ein Hinweis erscheint.
+// Audio devices: The speaker button at the top opens the choice of output device,
+// the microphone button next to it that of the recording device. "System default"
+// is at the top; the choice takes effect immediately (playback continues on
+// the new device), is saved in the settings and still applies after a restart. If
+// the remembered device is missing at startup, the system default plays and a notice appears.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -30,14 +30,14 @@ const settings = () => {
 const engine = () => app.eval(() => T.st.snapshot.peek().engine);
 const devices = () => app.eval(() => window.__TAURI__.core.invoke("audio_devices"));
 
-/** Neustart mit demselben Ordner (Einstellungen bleiben). */
+/** Restart with the same folder (settings are kept). */
 async function restart() {
   errors.push(...app.errors);
   await app.stop();
   app = await startApp({ tmp: app.tmp });
 }
 
-/** Menü öffnen (Lautsprecher oder Mikrofon) und seine Einträge lesen. */
+/** Opens the menu (speaker or microphone) and reads its entries. */
 async function openMenu(kind) {
   await app.eval(() => T.$$(".dev-menu.open").forEach((m) => m.classList.remove("open")));
   await app.clickOn(kind === "output" ? "kw-transport .chip.audio-out" : "kw-transport .btn.audio-in");
@@ -52,7 +52,7 @@ async function openMenu(kind) {
   }, kind);
 }
 
-/** Eintrag im offenen Menü anklicken (device "" = Systemstandard). */
+/** Clicks an entry in the open menu (device "" = system default). */
 async function pick(kind, device) {
   await app.eval((k, d) => {
     T.$$("[data-e2e=wahl]").forEach((x) => x.removeAttribute("data-e2e"));
@@ -62,8 +62,8 @@ async function pick(kind, device) {
   await app.clickOn("[data-e2e=wahl]");
 }
 
-test("Lautsprecher-Knopf: Liste der Ausgabegeräte, „Systemstandard“ oben und gewählt", async (t) => {
-  // Leiste läuft nicht über: Lautsprecher und Mikrofon ganz zu sehen, ohne sich zu überdecken
+test("speaker button: list of output devices, “System default” on top and selected", async (t) => {
+  // Bar does not overflow: speaker and microphone fully visible, without overlapping each other
   const geo = await app.eval(() => {
     const a = T.$("kw-transport .chip.audio-out").getBoundingClientRect();
     const m = T.$("kw-transport .btn.audio-in").getBoundingClientRect();
@@ -78,13 +78,13 @@ test("Lautsprecher-Knopf: Liste der Ausgabegeräte, „Systemstandard“ oben un
   assert.deepEqual(m.items.slice(1).map((i) => i.device), d.outputs, "alle Geräte des Systems");
   assert.ok(m.items.slice(1).every((i) => !i.on));
   assert.ok(m.hints.some((h) => /gilt auch beim nächsten Start/.test(h)));
-  // Tooltip nennt Gerät und Abtastrate; noch einmal klicken schließt das Menü
+  // Tooltip names device and sample rate; clicking again closes the menu
   assert.match(await app.eval(() => T.$("kw-transport .chip.audio-out").title), /Ausgabegerät: .+ \(Systemstandard\) · \d+ Hz/);
   await app.clickOn("kw-transport .chip.audio-out");
   assert.equal(await app.eval(() => !!T.$(".dev-menu.open")), false, "zu");
 });
 
-test("Mikrofon-Knopf: Liste der Aufnahmegeräte, „Systemstandard“ oben", async (t) => {
+test("microphone button: list of recording devices, “System default” on top", async (t) => {
   if (!(await engine()).available) return t.skip("kein Audiogerät auf dieser Maschine");
   const d = await devices();
   const m = await openMenu("input");
@@ -97,11 +97,11 @@ test("Mikrofon-Knopf: Liste der Aufnahmegeräte, „Systemstandard“ oben", asy
   await app.clickOn("kw-transport .btn.audio-in");
 });
 
-test("Gerät wählen wirkt sofort – die Wiedergabe läuft weiter –, „Systemstandard“ zurück; beides in den Einstellungen", async (t) => {
+test("choosing a device takes effect immediately – playback keeps running –, “System default” back; both in the settings", async (t) => {
   if (!(await engine()).available) return t.skip("kein Audiogerät auf dieser Maschine");
   const d = await devices();
   await app.reset();
-  // „Systemstandard“ ausdrücklich wählen
+  // explicitly choose "System default"
   await openMenu("output");
   await pick("output", "");
   await app.waitFor(() => T.$(".toast")?.textContent === "Ausgabe: Systemstandard", { what: "Meldung Systemstandard" });
@@ -120,12 +120,12 @@ test("Gerät wählen wirkt sofort – die Wiedergabe läuft weiter –, „Syste
   const e = await engine();
   assert.equal(e.outputDevice, name, "spielt über das gewählte Gerät");
   assert.equal(settings().ausgabegeraet, name, "gemerkt");
-  // läuft auf dem neuen Gerät weiter – ohne Sprung an den Anfang
+  // continues on the new device – without jumping to the start
   await sleep(400);
   const st = await app.eval(() => T.st.status.peek());
   assert.equal(st.playing, true, "spielt weiter");
   assert.ok(st.positionSecs > before, `Position läuft weiter (${before} → ${st.positionSecs})`);
-  // im Menü als gewählt markiert
+  // marked as chosen in the menu
   const m = await openMenu("output");
   assert.deepEqual(m.items.filter((i) => i.on).map((i) => i.device), [name]);
   await pick("output", "");
@@ -134,7 +134,7 @@ test("Gerät wählen wirkt sofort – die Wiedergabe läuft weiter –, „Syste
   await app.eval(() => window.__TAURI__.core.invoke("transport", { action: "stop" }));
 });
 
-test("Die Wahl übersteht einen Neustart", async (t) => {
+test("the choice survives a restart", async (t) => {
   if (!(await engine()).available) return t.skip("kein Audiogerät auf dieser Maschine");
   const d = await devices();
   if (!d.outputs.length && !d.inputs.length) return t.skip("keine Geräte zum Wählen");
@@ -164,7 +164,7 @@ test("Die Wahl übersteht einen Neustart", async (t) => {
   }
 });
 
-test("Fehlt das gemerkte Gerät beim Start: Systemstandard und ein kurzer Hinweis; die Wahl bleibt gemerkt", async (t) => {
+test("if the remembered device is missing at startup: system default and a short notice; the choice stays remembered", async (t) => {
   if (!(await engine()).available) return t.skip("kein Audiogerät auf dieser Maschine");
   errors.push(...app.errors);
   await app.stop();
@@ -183,7 +183,7 @@ test("Fehlt das gemerkte Gerät beim Start: Systemstandard und ein kurzer Hinwei
   assert.ok(m.hints.some((h) => h.includes("Verschwundenes Interface")), "Hinweis im Menü");
   await app.clickOn("kw-transport .chip.audio-out");
   assert.equal(settings().ausgabegeraet, "Verschwundenes Interface", "steckt es wieder, gilt es wieder");
-  // ausdrücklich wählen: Hinweis weg
+  // choose explicitly: notice gone
   await openMenu("output");
   await pick("output", "");
   await app.waitFor(() => T.st.snapshot.peek().engine.outputNotice === null, { what: "Hinweis weg" });
@@ -191,7 +191,7 @@ test("Fehlt das gemerkte Gerät beim Start: Systemstandard und ein kurzer Hinwei
   assert.equal(await app.eval(() => T.$("kw-transport .chip.audio-out").classList.contains("warn")), false);
 });
 
-test("Agent: audio_devices und set_audio_device", async (t) => {
+test("agent: audio_devices and set_audio_device", async (t) => {
   if (!(await engine()).available) return t.skip("kein Audiogerät auf dieser Maschine");
   const d = await app.mcp("audio_devices");
   assert.ok(Array.isArray(d.outputs) && Array.isArray(d.inputs));
@@ -207,6 +207,6 @@ test("Agent: audio_devices und set_audio_device", async (t) => {
   await assert.rejects(app.mcp("set_audio_device", { kind: "lautsprecher" }), /Unbekannte Geräteart/);
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual([...errors, ...app.errors], []);
 });

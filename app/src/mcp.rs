@@ -1,7 +1,7 @@
-//! Agent auf dem Desktop: die Werkzeuge des Kerns (`klang_app::agent`) als
-//! MCP-Server über HTTP auf 127.0.0.1 – plus das, was nur der Desktop kann
-//! (Fenster nach vorn holen, Bibliotheken herunterladen und verwalten).
-//! Im Browser stellt der Web-Kern dieselben Werkzeuge in der Seite bereit.
+//! Agent on the desktop: the core's tools (`klang_app::agent`) as an MCP
+//! server over HTTP on 127.0.0.1 – plus what only the desktop can do (bring the
+//! window to the front, download and manage libraries). In the browser the web
+//! core provides the same tools in the page.
 
 use crate::state::AppState;
 use klang_app::agent::{Agent, AgentShell};
@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 
-/// Die Plattform „Desktop“ für die Werkzeuge.
+/// The "desktop" platform for the tools.
 struct DesktopShell(AppHandle);
 
 impl AgentShell for DesktopShell {
@@ -21,7 +21,7 @@ impl AgentShell for DesktopShell {
 
     fn open_in_window(&self, path: &Path) -> Result<(), String> {
         let _ = self.0.emit("open-file", path.display().to_string());
-        // nach vorn holen – außer im Hintergrundmodus der Tests
+        // bring to the front – except in the tests' background mode
         if let Some(w) = self.0.get_webview_window("main").filter(|_| !crate::background_mode()) {
             let _ = w.unminimize();
             let _ = w.show();
@@ -69,7 +69,7 @@ impl AgentShell for DesktopShell {
     }
 }
 
-/// Startet den MCP-Server auf 127.0.0.1 (Port aus KLANGWELT_MCP_PORT, sonst 7419).
+/// Starts the MCP server on 127.0.0.1 (port from KLANGWELT_MCP_PORT, otherwise 7419).
 pub fn start(app: AppHandle) {
     let port = std::env::var("KLANGWELT_MCP_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
     let token = std::env::var("KLANGWELT_MCP_TOKEN").ok().filter(|t| !t.is_empty());

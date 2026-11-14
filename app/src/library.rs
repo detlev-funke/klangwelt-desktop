@@ -1,9 +1,9 @@
-//! Musikbibliothek, der Teil nur für den Desktop: Pakete herunterladen (curl)
-//! und Partituren in die aktive Bibliothek aufnehmen – im Hintergrund, mit
-//! Aufträgen, die einen Neustart überstehen (siehe [`crate::libraries`]).
+//! Music library, the desktop-only part: downloading packs (curl) and adding
+//! scores to the active library – in the background, with jobs that survive a
+//! restart (see [`crate::libraries`]).
 //!
-//! Suchen, Öffnen, Vorspielen und Übernehmen gehören zum gemeinsamen Kern
-//! (`klang_app::library`); sie sind hier unter denselben Namen erreichbar.
+//! Searching, opening, previewing and importing belong to the shared core
+//! (`klang_app::library`); they are available here under the same names.
 
 pub use klang_app::library::*;
 
@@ -21,20 +21,20 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, State};
 
-/// Baut die aktive Bibliothek aus ihren Quellen neu auf (Pakete, Ordner,
-/// Dateien) – z. B. für die Akkordstatistik älterer Indizes.
+/// Rebuilds the active library from its sources (packs, folders, files) –
+/// e.g. for the chord statistics of older indexes.
 #[tauri::command]
 pub async fn library_reindex(app: AppHandle, state: State<'_, AppState>) -> CmdResult<LibraryInfo> {
     start_rebuild(&app, String::new())?;
     info(&state)
 }
 
-/// Stand an die Oberfläche melden („library-changed“).
+/// Report the state to the UI ("library-changed").
 pub(crate) fn emit_info(app: &AppHandle) {
     klang_app::library::emit_info(&app.state::<AppState>());
 }
 
-/// Läuft schon ein Auftrag (Download, Indizieren, Übernehmen, Laden)?
+/// Is a job already running (download, indexing, import, loading)?
 fn check_idle(s: &LibStatus) -> CmdResult<()> {
     if s.building.is_some() || s.download.is_some() || s.adding || s.merging.is_some() || s.pipeline.is_some() {
         return Err(tr!("The library is busy loading, indexing or adding scores."));
@@ -45,21 +45,21 @@ fn check_idle(s: &LibStatus) -> CmdResult<()> {
     Ok(())
 }
 
-/// Aktive Bibliothek (Kennung, Name).
+/// Active library (id, name).
 fn active(st: &AppState) -> CmdResult<(String, String)> {
     lock(&st.library)?.as_ref().map(|l| (l.id.clone(), l.name.clone())).ok_or_else(|| tr!("No library loaded."))
 }
 
-/// Nimmt Partituren (Dateien oder ganze Ordner) in die aktive Bibliothek auf:
-/// Sie werden für sich indiziert und mit ihr verschmolzen – schon enthaltene
-/// werden übersprungen. Läuft im Hintergrund.
+/// Adds scores (files or whole folders) to the active library: they are
+/// indexed on their own and merged into it – those already contained are
+/// skipped. Runs in the background.
 #[tauri::command]
 pub async fn library_add(app: AppHandle, state: State<'_, AppState>, paths: Vec<String>) -> CmdResult<LibraryInfo> {
     start_add(&app, &paths)?;
     info(&state)
 }
 
-/// Startet das Hinzufügen im Hintergrund (auch für das MCP-Werkzeug); liefert den Namen der Bibliothek.
+/// Starts adding in the background (also for the MCP tool); returns the name of the library.
 pub fn start_add(app: &AppHandle, paths: &[String]) -> CmdResult<String> {
     let st = app.state::<AppState>();
     let paths: Vec<PathBuf> = paths.iter().map(|p| p.trim().trim_matches('"')).filter(|p| !p.is_empty()).map(PathBuf::from).collect();
@@ -79,7 +79,7 @@ pub fn start_add(app: &AppHandle, paths: &[String]) -> CmdResult<String> {
     std::thread::Builder::new()
         .name("klang-library-add".into())
         .spawn(move || {
-            // Pfade so vermerken, wie sie auf der Platte heißen (für „Neu indizieren“)
+            // Record paths as they are named on disk (for "Re-index")
             let record: Vec<String> = paths.iter().map(|p| std::fs::canonicalize(p).map(strip_verbatim).unwrap_or_else(|_| p.clone()).display().to_string()).collect();
             index_into(&handle, &id, &paths, &[], &record, "");
             if let Ok(mut s) = handle.state::<AppState>().library_status.lock() {
@@ -91,7 +91,7 @@ pub fn start_add(app: &AppHandle, paths: &[String]) -> CmdResult<String> {
     Ok(name)
 }
 
-/// Windows: `\\?\C:\…` aus `canonicalize` wieder zu `C:\…`.
+/// Windows: turns `\\?\C:\…` from `canonicalize` back into `C:\…`.
 fn strip_verbatim(p: PathBuf) -> PathBuf {
     let s = p.display().to_string();
     match s.strip_prefix(r"\\?\") {
@@ -100,7 +100,7 @@ fn strip_verbatim(p: PathBuf) -> PathBuf {
     }
 }
 
-/// „„Eigene““ bzw. „3 Dateien/Ordner“ für Meldungen.
+/// The quoted name (one path) or "3 files/folders" for messages.
 fn what_paths(paths: &[PathBuf]) -> String {
     match paths {
         [one] => tr!("\"{name}\"", name = one.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| one.display().to_string())),
@@ -108,10 +108,10 @@ fn what_paths(paths: &[PathBuf]) -> String {
     }
 }
 
-/// Indiziert `paths` (im aufrufenden Thread) in eine Zwischendatei und
-/// verschmilzt sie mit der Bibliothek `target`; `packs`/`record` werden dort
-/// vermerkt. `prefix` steht vor der Abschlussmeldung. Liefert true, wenn alles
-/// übernommen ist.
+/// Indexes `paths` (in the calling thread) into an intermediate file and
+/// merges it into the library `target`; `packs`/`record` are noted there.
+/// `prefix` goes before the final message. Returns true if everything has
+/// been imported.
 fn index_into(handle: &AppHandle, target: &str, paths: &[PathBuf], packs: &[String], record: &[String], prefix: &str) -> bool {
     let st = handle.state::<AppState>();
     let root = default_root(handle);
@@ -187,7 +187,7 @@ fn index_into(handle: &AppHandle, target: &str, paths: &[PathBuf], packs: &[Stri
     ok
 }
 
-/// Baut die aktive Bibliothek aus ihren Quellen neu (im Hintergrund).
+/// Rebuilds the active library from its sources (in the background).
 fn start_rebuild(app: &AppHandle, prefix: String) -> CmdResult<()> {
     let st = app.state::<AppState>();
     let (id, name) = active(&st)?;
@@ -253,26 +253,26 @@ fn start_rebuild(app: &AppHandle, prefix: String) -> CmdResult<()> {
     Ok(())
 }
 
-// ---------------------------------------------------------------- Aufträge
+// ---------------------------------------------------------------- Jobs
 //
-// Herunterladen → Genre/Komponist → Indizieren → in die Bibliothek übernehmen
-// läuft im Hintergrund. Damit ein Neustart (oder Absturz) nichts verliert,
-// steht der Stand als `klangwelt-auftrag.json` im Paketordner und die Ordner
-// offener Aufträge in einer Liste der App. Beim Start geht es automatisch
-// weiter; die Datei verschwindet, wenn die Partituren übernommen sind.
+// Downloading → genre/composer → indexing → importing into the library
+// runs in the background. So that a restart (or crash) loses nothing,
+// the state is kept as `klangwelt-auftrag.json` in the pack folder and the
+// folders of open jobs in a list of the app. On startup it continues
+// automatically; the file disappears once the scores have been imported.
 
 const JOB_FILE: &str = "klangwelt-auftrag.json";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum JobPhase {
-    /// Partituren werden geladen (unterbrochen: Download neu starten).
+    /// Scores are being downloaded (interrupted: restart the download).
     Laden,
-    /// Genre/Komponist (PDMX.csv) fehlen noch.
+    /// Genre/composer (PDMX.csv) are still missing.
     Metadaten,
-    /// Partituren und Metadaten da, Index fehlt.
+    /// Scores and metadata present, index missing.
     Indizieren,
-    /// Von Hand abgebrochen – nicht von selbst fortsetzen.
+    /// Cancelled by hand – do not resume on its own.
     Abgebrochen,
 }
 
@@ -282,13 +282,13 @@ struct Job {
     name: String,
     with_meta: bool,
     phase: JobPhase,
-    /// Fehlgeschlagene automatische Versuche (nach 3 wird nicht mehr fortgesetzt).
+    /// Failed automatic attempts (after 3 it is no longer resumed).
     #[serde(default)]
     attempts: u32,
-    /// Ziel: Kennung der Bibliothek (fehlt bei alten Aufträgen: die aktive)
+    /// Target: id of the library (missing in old jobs: the active one)
     #[serde(default)]
     library: Option<String>,
-    /// Paket aus dem Katalog (fehlt bei alten Aufträgen)
+    /// Pack from the catalog (missing in old jobs)
     #[serde(default)]
     pack: Option<String>,
 }
@@ -343,7 +343,7 @@ fn finish_job(handle: &AppHandle, dir: &Path) {
     set_listed(handle, dir, false);
 }
 
-/// Liegt irgendwo unter `dir` eine Partitur? (bricht beim ersten Fund ab)
+/// Is there a score anywhere under `dir`? (stops at the first one found)
 fn any_score(dir: &Path) -> bool {
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
@@ -360,9 +360,9 @@ fn any_score(dir: &Path) -> bool {
     false
 }
 
-/// Nach dem Laden: Genre/Komponist (falls gewünscht und noch nicht da), dann
-/// indizieren und in die Bibliothek des Auftrags übernehmen. Hält den Auftrag
-/// aktuell; nach Erfolg ist er erledigt.
+/// After downloading: genre/composer (if wanted and not yet present), then
+/// index and import into the job's library. Keeps the job up to date; after
+/// success it is done.
 fn finish_pipeline(handle: &AppHandle, dir: &Path, job: &Job, mut what: String, fetch_meta: bool) {
     let st = handle.state::<AppState>();
     // The job file stores the untranslated pack name (older jobs: a German one, which stays as it is).
@@ -383,7 +383,7 @@ fn finish_pipeline(handle: &AppHandle, dir: &Path, job: &Job, mut what: String, 
                 });
             }
         }
-        // Genre/Komponist: Fehler sind kein Grund, nicht zu indizieren.
+        // Genre/composer: errors are no reason not to index.
         match fetch_metadata(handle, dir, name) {
             Ok(n) => {
                 what.push_str(&tr!("Genre/composer for {count}.", count = fmt_num(n)));
@@ -404,14 +404,14 @@ fn finish_pipeline(handle: &AppHandle, dir: &Path, job: &Job, mut what: String, 
         return;
     }
     set_phase(handle, dir, JobPhase::Indizieren);
-    // Ziel: die Bibliothek des Auftrags (alte Aufträge: die aktive, sonst „Standard“)
+    // Target: the job's library (old jobs: the active one, otherwise "Standard")
     let target = job
         .library
         .clone()
         .or_else(|| active(&st).ok().map(|a| a.0))
         .unwrap_or_else(|| libraries::STANDARD.to_string());
     let packs: Vec<String> = job.pack.iter().cloned().collect();
-    // Liegt das Paket nicht in seinem Standardordner, den Ordner vermerken (für „Neu indizieren“)
+    // If the pack is not in its default folder, record the folder (for "Re-index")
     let default_dir = job.pack.as_deref().and_then(|p| libraries::pack_dir(handle, p));
     let record: Vec<String> = if default_dir.as_deref() == Some(dir) { Vec::new() } else { vec![dir.display().to_string()] };
     if index_into(handle, &target, &[dir.to_path_buf()], &packs, &record, &what) {
@@ -424,9 +424,9 @@ fn finish_pipeline(handle: &AppHandle, dir: &Path, job: &Job, mut what: String, 
     }
 }
 
-/// Beim Start (nach dem Laden der Bibliothek): unterbrochene Aufträge
-/// fortsetzen (Genre/Komponist, Indizieren, Übernehmen). Ein unterbrochener
-/// Download wird nur gemeldet – „Herunterladen“ setzt ihn fort.
+/// On startup (after loading the library): resume interrupted jobs (genre/
+/// composer, indexing, importing). An interrupted download is only reported –
+/// "Download" resumes it.
 pub fn resume_pending(handle: &AppHandle) {
     let root = default_root(handle);
     let mut folders: Vec<PathBuf> = PACKS.iter().map(|p| root.join(p.folder)).collect();
@@ -467,7 +467,7 @@ pub fn resume_pending(handle: &AppHandle) {
     }
     let handle = handle.clone();
     let _ = std::thread::Builder::new().name("klang-fortsetzen".into()).spawn(move || {
-        // kurz warten, bis die Oberfläche steht
+        // wait briefly until the UI is up
         std::thread::sleep(Duration::from_secs(2));
         let st = handle.state::<AppState>();
         for (dir, job) in todo {
@@ -475,7 +475,7 @@ pub fn resume_pending(handle: &AppHandle) {
             {
                 let Ok(mut s) = st.library_status.lock() else { return };
                 if check_idle(&s).is_err() {
-                    return; // etwas anderes läuft schon
+                    return; // something else is already running
                 }
                 s.message = Some(tr!("{name}: finishing (interrupted last time) …", name = name));
                 s.pipeline = Some(QueuedDownload {
@@ -494,7 +494,7 @@ pub fn resume_pending(handle: &AppHandle) {
             let fetch_meta = job.phase == JobPhase::Metadaten && !dir.join(pdmx::META_FILE).is_file();
             finish_pipeline(&handle, &dir, &job, format!("{} ", tr!("{name} (interrupted last time):", name = name)), fetch_meta);
         }
-        // Hinweise (z. B. unterbrochener Download) an die Abschlussmeldung hängen
+        // append notes (e.g. interrupted download) to the final message
         if !notes.is_empty() {
             if let Ok(mut s) = st.library_status.lock() {
                 let m = s.message.take().unwrap_or_default();
@@ -505,9 +505,9 @@ pub fn resume_pending(handle: &AppHandle) {
     });
 }
 
-/// Hält `pipeline` gesetzt, solange ein Download-Auftrag läuft, und gibt sie
-/// am Ende frei (auch nach einem Fehler) – dann kommt das nächste Paket der
-/// Warteschlange dran.
+/// Keeps `pipeline` set while a download job is running and releases it at
+/// the end (even after an error) – then the next pack in the queue gets its
+/// turn.
 struct PipelineGuard(AppHandle);
 
 impl Drop for PipelineGuard {
@@ -519,9 +519,9 @@ impl Drop for PipelineGuard {
     }
 }
 
-// ---------------------------------------------------------------- Herunterladen
+// ---------------------------------------------------------------- Downloading
 
-/// Eine Musikbibliothek, die die App herunterladen kann.
+/// A music library that the app can download.
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CatalogEntry {
@@ -529,53 +529,53 @@ pub struct CatalogEntry {
     /// Display texts (translated): name, description, license, group name/description, format
     name: String,
     description: String,
-    /// ungefähre Zahl der Partituren
+    /// approximate number of scores
     scores: usize,
     download_mb: u32,
     disk_mb: u32,
     license: String,
     source_url: &'static str,
-    /// Sammlung (Panel in der Oberfläche): „pdmx“, „openscore“, „kernscores“, „dcml“
+    /// Collection (panel in the UI): "pdmx", "openscore", "kernscores", "dcml"
     group: &'static str,
     group_name: String,
     group_description: String,
-    /// Dateiformat der Partituren (für die Anzeige)
+    /// File format of the scores (for display)
     format: String,
-    /// Bringt eine Akkordanalyse von Fachleuten mit
+    /// Comes with a chord analysis by experts
     expert_harmony: bool,
-    /// vorgeschlagener Zielordner
+    /// suggested target folder
     folder: String,
-    /// Die Partituren liegen schon im Ordner (Übernehmen ohne Download)
+    /// The scores are already in the folder (import without download)
     installed: bool,
-    /// Name der aktiven Bibliothek, wenn sie das Paket schon enthält
+    /// Name of the active library if it already contains the pack
     in_library: Option<String>,
 }
 
-/// PDMX (Long et al. 2024): gemeinfreie MusicXML-Partituren von MuseScore,
-/// Datensatz unter CC-BY 4.0. Das Archiv ist ein großes .tar.gz; die
-/// kleineren Pakete lesen nur seinen Anfang (bunt gemischte Auswahl).
+/// PDMX (Long et al. 2024): public-domain MusicXML scores from MuseScore,
+/// dataset under CC-BY 4.0. The archive is one large .tar.gz; the
+/// smaller packs read only its beginning (a mixed selection).
 const PDMX_MXL_URL: &str = "https://zenodo.org/api/records/15571083/files/mxl.tar.gz/content";
-/// Metadaten aller PDMX-Partituren (Genre, Komponist, Schwierigkeit …).
+/// Metadata of all PDMX scores (genre, composer, difficulty …).
 const PDMX_CSV_URL: &str = "https://zenodo.org/api/records/15571083/files/PDMX.csv/content";
 const PDMX_CSV_BYTES: u64 = 225_399_738;
 const PDMX_RECORD: &str = "https://zenodo.org/records/15571083";
 const PDMX_BYTES: u64 = 1_894_335_797;
 const PDMX_LICENSE: &str = tk!("Scores in the public domain or CC0 according to MuseScore · PDMX dataset (Long et al. 2024) under CC-BY 4.0");
 
-/// Ein Ordner aus einem GitHub-Repositorium.
+/// A folder from a GitHub repository.
 struct Repo {
     repo: &'static str,
     branch: &'static str,
-    /// Unterordner im Bibliotheksordner („“ = direkt hinein)
+    /// Subfolder in the library folder ("" = directly into it)
     sub: &'static str,
-    /// Welche Dateien geladen werden (Pfad im Repositorium)
+    /// Which files are downloaded (path in the repository)
     want: fn(&str) -> bool,
 }
 
 enum Source {
-    /// PDMX-Archiv; None = alles, sonst die ersten N Partituren
+    /// PDMX archive; None = everything, otherwise the first N scores
     Pdmx(Option<usize>),
-    /// Einzelne Dateien aus GitHub-Repositorien
+    /// Individual files from GitHub repositories
     Repos(&'static [Repo]),
 }
 
@@ -635,18 +635,18 @@ fn mxl_in_scores(p: &str) -> bool {
 fn kern_file(p: &str) -> bool {
     p.starts_with("kern/") && p.ends_with(".krn")
 }
-/// DCML: Notentabellen, Harmonien und Metadaten (die .mscx-Dateien wären zehnmal so groß).
+/// DCML: note tables, harmonies and metadata (the .mscx files would be ten times as large).
 fn dcml_tables(p: &str) -> bool {
     p == "metadata.tsv" || (p.starts_with("notes/") && p.ends_with(".notes.tsv")) || (p.starts_with("harmonies/") && p.ends_with(".harmonies.tsv"))
 }
 
 const OPENSCORE_LICENSE: &str = tk!("CC0 1.0 (public domain) · OpenScore, https://openscore.cc");
-/// Stand November 2026: Die Repositorien von Craig Stuart Sapp tragen meist
-/// CC BY-NC-SA 4.0 (LICENSE.txt), einige haben keine Lizenzdatei.
+/// As of November 2026: the repositories of Craig Stuart Sapp mostly carry
+/// CC BY-NC-SA 4.0 (LICENSE.txt), some have no license file.
 const KERN_LICENSE: &str = tk!("KernScores (Craig Stuart Sapp, CCARH Stanford): mostly CC BY-NC-SA 4.0, some collections without a license statement – private and non-commercial use only, credit the source");
-/// Komponist einer Sammlung, die nur ein Komponist geschrieben hat – gilt für
-/// Partituren, deren Quelle ihn nicht nennt (DCML-Bach-Choräle, einzelne Sätze
-/// bei Couperin, Liszt …). Sammlungen mehrerer Komponisten fehlen hier.
+/// Composer of a collection written by only one composer – applies to
+/// scores whose source does not name him (DCML Bach chorales, individual
+/// movements by Couperin, Liszt …). Collections of several composers are missing here.
 fn repo_composer(repo: &str) -> Option<&'static str> {
     Some(match repo.split('/').nth(1)? {
         "bach-370-chorales" | "bach-wtc" | "art-of-the-fugue" | "bach-musical-offering" | "inventions" | "bach_chorales" | "bach_en_fr_suites" | "bach_solo" => "Johann Sebastian Bach",
@@ -694,13 +694,13 @@ fn repo_composer(repo: &str) -> Option<&'static str> {
     })
 }
 
-/// Mitgelieferte Dateilisten der Sammlungen – Ausweg, wenn die GitHub-API nicht antwortet.
+/// Bundled file lists of the collections – a fallback if the GitHub API does not respond.
 const SAMMLUNGEN: &str = include_str!("sammlungen.txt");
 const DCML_LICENSE: &str = tk!("CC BY-NC-SA 4.0 · DCML, EPFL Lausanne – cite when used, non-commercial");
 
-/// Größen aus den Dateilisten der Repositorien (November 2026). PDMX
-/// gemessen (≈ 3 MB/s): Kostprobe ≈ 10 s, Auswahl ≈ 1,5 min; der ganze
-/// Datensatz ist hochgerechnet (Index auf der Platte, Format 3).
+/// Sizes from the file lists of the repositories (November 2026). PDMX
+/// measured (≈ 3 MB/s): sample ≈ 10 s, selection ≈ 1.5 min; the whole
+/// dataset is extrapolated (index on disk, format 3).
 const PACKS: [Pack; 13] = [
     Pack {
         id: "pdmx-kostprobe",
@@ -954,7 +954,7 @@ const PACKS: [Pack; 13] = [
 ];
 
 pub(crate) fn default_root(app: &AppHandle) -> PathBuf {
-    // Für Tests und eigene Ablageorte: KLANGWELT_BIBLIOTHEK=<Ordner>
+    // For tests and custom storage locations: KLANGWELT_BIBLIOTHEK=<folder>
     if let Some(r) = std::env::var_os("KLANGWELT_BIBLIOTHEK").filter(|r| !r.is_empty()) {
         return PathBuf::from(r);
     }
@@ -967,7 +967,7 @@ pub(crate) fn default_root(app: &AppHandle) -> PathBuf {
         .join("Bibliothek")
 }
 
-/// Rang der PDMX-Pakete: Ein größeres enthält die kleineren (sie lesen den Anfang desselben Archivs).
+/// Rank of the PDMX packs: a larger one contains the smaller ones (they read the beginning of the same archive).
 fn pdmx_rank(id: &str) -> Option<u8> {
     match id {
         "pdmx-kostprobe" => Some(1),
@@ -977,7 +977,7 @@ fn pdmx_rank(id: &str) -> Option<u8> {
     }
 }
 
-/// Enthält eine Bibliothek mit dem Paket `have` schon das Paket `want`?
+/// Does a library with the pack `have` already contain the pack `want`?
 pub(crate) fn covers(have: &str, want: &str) -> bool {
     have == want || matches!((pdmx_rank(have), pdmx_rank(want)), (Some(a), Some(b)) if a >= b)
 }
@@ -1005,12 +1005,12 @@ pub(crate) fn pack_folder(id: &str) -> Option<&'static str> {
     PACKS.iter().find(|p| p.id == id).map(|p| p.folder)
 }
 
-/// Paket, dessen Standardordner so heißt.
+/// Pack whose default folder has this name.
 pub(crate) fn pack_for_folder(folder: &str) -> Option<&'static str> {
     PACKS.iter().find(|p| p.folder.eq_ignore_ascii_case(folder)).map(|p| p.id)
 }
 
-/// Liegen Genre/Komponist für alle PDMX-Pakete unter `packs` vor?
+/// Are genre/composer available for all PDMX packs under `packs`?
 pub(crate) fn pdmx_has_meta(root: &Path, packs: &[String]) -> bool {
     packs
         .iter()
@@ -1019,7 +1019,7 @@ pub(crate) fn pdmx_has_meta(root: &Path, packs: &[String]) -> bool {
         .all(|p| root.join(p.folder).join(pdmx::META_FILE).is_file())
 }
 
-/// Liegen die Partituren eines Pakets vollständig im Ordner (Download fertig)?
+/// Are the scores of a pack completely in the folder (download finished)?
 fn pack_complete(dir: &Path) -> bool {
     any_score(dir) && read_job(dir).is_none_or(|j| j.phase != JobPhase::Laden)
 }
@@ -1055,11 +1055,11 @@ pub async fn library_catalog(app: AppHandle, state: State<'_, AppState>) -> CmdR
         .collect())
 }
 
-/// Lädt ein Paket aus dem Katalog in `folder` (oder den vorgeschlagenen Ordner),
-/// entpackt es als Datenstrom und übernimmt es anschließend in die aktive
-/// Bibliothek – alles im Hintergrund. Liegen die Partituren schon im Ordner,
-/// entfällt der Download. `withMeta` (Standard: ja) lädt Genre/Komponist aus
-/// PDMX.csv dazu.
+/// Downloads a pack from the catalog into `folder` (or the suggested folder),
+/// unpacks it as a stream and then imports it into the active
+/// library – all in the background. If the scores are already in the folder,
+/// the download is skipped. `withMeta` (default: yes) also downloads genre/composer
+/// from PDMX.csv.
 #[tauri::command]
 pub async fn library_download(
     app: AppHandle,
@@ -1072,8 +1072,8 @@ pub async fn library_download(
     info(&state)
 }
 
-/// Lädt für die PDMX-Pakete der aktiven Bibliothek Genre/Komponist nach und
-/// baut sie danach neu auf.
+/// Downloads genre/composer for the PDMX packs of the active library and
+/// then rebuilds them.
 #[tauri::command]
 pub async fn library_enrich(app: AppHandle, state: State<'_, AppState>) -> CmdResult<LibraryInfo> {
     let packs = lock(&state.library)?.as_ref().map(|l| l.packs.clone()).ok_or_else(|| tr!("No library loaded."))?;
@@ -1142,8 +1142,8 @@ pub async fn library_enrich(app: AppHandle, state: State<'_, AppState>) -> CmdRe
     info(&state)
 }
 
-/// Liest `PDMX.csv` als Datenstrom und behält die Zeilen der Partituren in `dir`
-/// (gespeichert als `pdmx-metadaten.tsv`). Liefert die Zahl der gefundenen Partituren.
+/// Reads `PDMX.csv` as a stream and keeps the rows of the scores in `dir`
+/// (saved as `pdmx-metadaten.tsv`). Returns the number of scores found.
 fn fetch_metadata(handle: &AppHandle, dir: &Path, name: &str) -> Result<usize, String> {
     let st = handle.state::<AppState>();
     let wanted: std::collections::HashSet<String> = collect_files(dir)
@@ -1166,7 +1166,7 @@ fn fetch_metadata(handle: &AppHandle, dir: &Path, name: &str) -> Result<usize, S
     }
     emit_info(handle);
     let bytes = Arc::new(AtomicU64::new(0));
-    // reißt die Verbindung ab, geht es an derselben Stelle weiter
+    // if the connection drops, it continues at the same place
     let mut dl = fetch::ResumingDownload::new(PDMX_CSV_URL, &st.download_child, &st.library_cancel, |pos, n, why| {
         if let Ok(mut s) = st.library_status.lock() {
             s.message = Some(connection_lost(name, why, pos, n));
@@ -1174,7 +1174,7 @@ fn fetch_metadata(handle: &AppHandle, dir: &Path, name: &str) -> Result<usize, S
         emit_info(handle);
     })
     .map_err(|e| e.to_string())?;
-    // Fortschritt melden, während gelesen wird (alle 250 ms).
+    // Report progress while reading (every 250 ms).
     let ticker = {
         let (bytes, handle) = (bytes.clone(), handle.clone());
         let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1198,7 +1198,7 @@ fn fetch_metadata(handle: &AppHandle, dir: &Path, name: &str) -> Result<usize, S
     let result = pdmx::filter_metadata(reader, &wanted, &st.library_cancel);
     ticker.0.store(true, Ordering::Relaxed);
     let _ = ticker.1.join();
-    // curl beenden (hört auf, sobald alle eigenen Stücke gefunden sind)
+    // stop curl (it exits as soon as all of its own pieces are found)
     drop(dl);
     let meta = match result {
         Ok(m) => m,
@@ -1210,15 +1210,15 @@ fn fetch_metadata(handle: &AppHandle, dir: &Path, name: &str) -> Result<usize, S
     Ok(meta.len())
 }
 
-/// Kennungen der Pakete (für den Agenten).
+/// Ids of the packs (for the agent).
 pub fn pack_ids() -> Vec<&'static str> {
     PACKS.iter().map(|p| p.id).collect()
 }
 
-/// Ergebnis von [`start_download`]: gleich gestartet oder eingereiht.
+/// Result of [`start_download`]: started right away or queued.
 pub enum Started {
     Now(PathBuf),
-    /// wartet in der Warteschlange (Platz, ab 1)
+    /// waits in the queue (position, from 1)
     Queued(PathBuf, usize),
 }
 
@@ -1226,7 +1226,7 @@ fn find_pack(id: &str) -> CmdResult<&'static Pack> {
     PACKS.iter().find(|p| p.id == id).ok_or_else(|| tr!("Unknown pack: {id} (available: {ids})", id = id, ids = pack_ids().join(", ")))
 }
 
-/// Zielordner eines Auftrags: der angegebene oder der Standardordner des Pakets.
+/// Target folder of a job: the given one or the pack's default folder.
 fn item_dir(app: &AppHandle, pack: &Pack, item: &QueuedDownload) -> PathBuf {
     match &item.folder {
         Some(f) => PathBuf::from(f),
@@ -1234,8 +1234,8 @@ fn item_dir(app: &AppHandle, pack: &Pack, item: &QueuedDownload) -> PathBuf {
     }
 }
 
-/// Pakete der Bibliothek `lib_id` (die aktive aus dem Speicher, sonst aus der
-/// Liste); None, wenn es sie nicht mehr gibt.
+/// Packs of the library `lib_id` (the active one from memory, otherwise from the
+/// list); None if it no longer exists.
 fn library_packs(app: &AppHandle, lib_id: &str) -> Option<Vec<String>> {
     if let Ok(l) = app.state::<AppState>().library.lock() {
         if let Some(l) = l.as_ref().filter(|l| l.id == lib_id) {
@@ -1245,7 +1245,7 @@ fn library_packs(app: &AppHandle, lib_id: &str) -> Option<Vec<String>> {
     libraries::read(&default_root(app)).and_then(|r| r.get(lib_id).map(|e| e.packs.clone()))
 }
 
-/// Fehler, wenn die Zielbibliothek das Paket schon enthält (oder fehlt).
+/// Error if the target library already contains the pack (or is missing).
 fn check_contained(app: &AppHandle, pack: &Pack, item: &QueuedDownload) -> CmdResult<()> {
     let packs = library_packs(app, &item.library).ok_or_else(|| tr!("The library \"{library}\" no longer exists.", library = item.library_name))?;
     if let Some(have) = packs.iter().find(|have| covers(have, pack.id)) {
@@ -1260,12 +1260,13 @@ fn check_contained(app: &AppHandle, pack: &Pack, item: &QueuedDownload) -> CmdRe
     Ok(())
 }
 
-/// Startet Download und Übernehmen in die aktive Bibliothek im Hintergrund;
-/// Fortschritt über `library-changed`. `with_meta` gilt nur für PDMX
-/// (Genre/Komponist aus PDMX.csv); die anderen Sammlungen bringen ihre Angaben
-/// selbst mit. Liegen die Partituren schon vollständig im Ordner, entfällt der
-/// Download. Läuft gerade etwas (Download, Indizieren, Übernehmen), kommt das
-/// Paket in die Warteschlange und startet von selbst, sobald es frei ist.
+/// Starts download and import into the active library in the background;
+/// progress via `library-changed`. `with_meta` applies only to PDMX
+/// (genre/composer from PDMX.csv); the other collections bring their
+/// information themselves. If the scores are already completely in the folder,
+/// the download is skipped. If something is currently running (download,
+/// indexing, import), the pack goes into the queue and starts by itself as
+/// soon as it is free.
 pub fn start_download(app: &AppHandle, id: &str, folder: Option<&str>, with_meta: bool) -> CmdResult<Started> {
     let state = app.state::<AppState>();
     let pack = find_pack(id)?;
@@ -1282,7 +1283,7 @@ pub fn start_download(app: &AppHandle, id: &str, folder: Option<&str>, with_meta
     let dir = item_dir(app, pack, &item);
     let present = pack_complete(&dir);
     let mut s = lock(&state.library_status)?;
-    // Schon beauftragt (dasselbe Paket oder ein größeres, das es enthält)?
+    // Already requested (the same pack or a larger one that contains it)?
     let same = |q: &QueuedDownload| q.library == item.library && covers(&q.id, pack.id);
     if let Some(q) = s.pipeline.as_ref().filter(|q| same(q)) {
         return Err(if q.id == pack.id {
@@ -1301,7 +1302,7 @@ pub fn start_download(app: &AppHandle, id: &str, folder: Option<&str>, with_meta
     if s.loading {
         return Err(tr!("The library is still loading – just a moment."));
     }
-    // Warten schon welche, kommt es hinten an – auch in der kurzen Pause zwischen zwei Aufträgen.
+    // If some are already waiting, it goes to the back – also in the short pause between two jobs.
     if check_idle(&s).is_err() || !s.queue.is_empty() {
         s.queue.push(item);
         let position = s.queue.len();
@@ -1317,8 +1318,8 @@ pub fn start_download(app: &AppHandle, id: &str, folder: Option<&str>, with_meta
     Ok(Started::Now(dir))
 }
 
-/// Arbeitet die Warteschlange ab: Hat die Bibliothek eine halbe Sekunde lang
-/// nichts zu tun, startet das nächste Paket. Endet, wenn sie leer ist.
+/// Works through the queue: if the library has had nothing to do for half a
+/// second, the next pack starts. Ends when it is empty.
 fn spawn_queue_runner(app: &AppHandle) {
     let handle = app.clone();
     let spawned = std::thread::Builder::new().name("klang-warteschlange".into()).spawn(move || {
@@ -1336,7 +1337,7 @@ fn spawn_queue_runner(app: &AppHandle) {
                     idle_ticks = 0;
                     continue;
                 }
-                // zweimal hintereinander frei: kein Übergang mitten in einem Auftrag
+                // free twice in a row: no transition in the middle of a job
                 idle_ticks += 1;
                 if idle_ticks < 2 {
                     continue;
@@ -1354,8 +1355,8 @@ fn spawn_queue_runner(app: &AppHandle) {
     }
 }
 
-/// Startet ein Paket aus der Warteschlange. Ist es inzwischen enthalten (z. B.
-/// über ein größeres Paket davor), wird es mit einer Meldung übersprungen.
+/// Starts a pack from the queue. If it is contained in the meantime (e.g.
+/// through a larger pack before it), it is skipped with a message.
 fn start_queued(app: &AppHandle, item: QueuedDownload) {
     let st = app.state::<AppState>();
     let checked = find_pack(&item.id).and_then(|pack| check_contained(app, pack, &item).map(|_| pack));
@@ -1373,7 +1374,7 @@ fn start_queued(app: &AppHandle, item: QueuedDownload) {
     let present = pack_complete(&dir);
     let Ok(mut s) = st.library_status.lock() else { return };
     if check_idle(&s).is_err() {
-        // inzwischen hat etwas anderes begonnen: wieder vorne einreihen
+        // something else has started in the meantime: queue it at the front again
         s.queue.insert(0, item);
         return;
     }
@@ -1386,8 +1387,8 @@ fn start_queued(app: &AppHandle, item: QueuedDownload) {
     }
 }
 
-/// Setzt den Stand für den Auftrag (bei gehaltener Sperre, damit nichts
-/// dazwischenkommt) und startet ihn im Hintergrund.
+/// Sets the state for the job (while holding the lock, so that nothing
+/// intervenes) and starts it in the background.
 fn begin_download(app: &AppHandle, pack: &'static Pack, item: QueuedDownload, dir: PathBuf, present: bool, mut s: std::sync::MutexGuard<'_, LibStatus>) -> CmdResult<()> {
     let state = app.state::<AppState>();
     let with_meta = item.with_meta;
@@ -1425,7 +1426,7 @@ fn begin_download(app: &AppHandle, pack: &'static Pack, item: QueuedDownload, di
             let _running = PipelineGuard(handle.clone());
             let st = handle.state::<AppState>();
             if present {
-                // nur übernehmen (Genre/Komponist fehlen ggf. noch)
+                // only import (genre/composer may still be missing)
                 let job = Job { phase: if with_meta { JobPhase::Metadaten } else { JobPhase::Indizieren }, ..job };
                 write_job(&handle, &dir, &job);
                 let fetch_meta = with_meta && !dir.join(pdmx::META_FILE).is_file();
@@ -1435,7 +1436,7 @@ fn begin_download(app: &AppHandle, pack: &'static Pack, item: QueuedDownload, di
                 }
                 return;
             }
-            // Auftrag vermerken: wird die App geschlossen, geht es beim nächsten Start weiter.
+            // Record the job: if the app is closed, it continues at the next start.
             if std::fs::create_dir_all(&dir).is_ok() {
                 write_job(&handle, &dir, &job);
             }
@@ -1459,7 +1460,7 @@ fn begin_download(app: &AppHandle, pack: &'static Pack, item: QueuedDownload, di
                             what.push(' ');
                         }
                     }
-                    // Partituren komplett: ab hier wird beim nächsten Start ohne Download fortgesetzt
+                    // Scores complete: from here on it resumes without download at the next start
                     set_phase(&handle, &dir, if with_meta { JobPhase::Metadaten } else { JobPhase::Indizieren });
                     finish_pipeline(&handle, &dir, &job, what, true);
                 }
@@ -1486,8 +1487,8 @@ fn begin_download(app: &AppHandle, pack: &'static Pack, item: QueuedDownload, di
     Ok(())
 }
 
-/// Nimmt ein wartendes Paket aus der Warteschlange (`library`: nur das für
-/// diese Bibliothek); ohne `id` alle.
+/// Removes a waiting pack from the queue (`library`: only the one for
+/// this library); without `id` all of them.
 pub fn dequeue(app: &AppHandle, id: Option<&str>, library: Option<&str>) -> CmdResult<usize> {
     let st = app.state::<AppState>();
     let removed = {
@@ -1500,14 +1501,14 @@ pub fn dequeue(app: &AppHandle, id: Option<&str>, library: Option<&str>) -> CmdR
     Ok(removed)
 }
 
-/// Nimmt ein wartendes Paket aus der Warteschlange; ohne `id` alle.
+/// Removes a waiting pack from the queue; without `id` all of them.
 #[tauri::command]
 pub async fn library_dequeue(app: AppHandle, state: State<'_, AppState>, id: Option<String>, library: Option<String>) -> CmdResult<LibraryInfo> {
     dequeue(&app, id.as_deref(), library.as_deref())?;
     info(&state)
 }
 
-/// Lädt die passenden Dateien einer GitHub-Sammlung (läuft im Hintergrund-Thread).
+/// Downloads the matching files of a GitHub collection (runs in the background thread).
 fn download_repos(handle: &AppHandle, dir: &Path, pack: &Pack, repos: &[Repo]) -> Result<ExtractStats, String> {
     let st = handle.state::<AppState>();
     let name = translate(pack.name);
@@ -1523,11 +1524,11 @@ fn download_repos(handle: &AppHandle, dir: &Path, pack: &Pack, repos: &[Repo]) -
             license = translate(pack.license)
         ),
     );
-    // Dateilisten
+    // File lists
     let mut files: Vec<fetch::RemoteFile> = Vec::new();
-    // Die GitHub-API erlaubt ohne Anmeldung rund 60 Abfragen pro Stunde – ein
-    // Epochen-Paket braucht bis zu 13. Ist die Grenze erreicht (oder GitHub
-    // nicht erreichbar), gilt die mitgelieferte Liste (sammlungen.txt).
+    // Without signing in, the GitHub API allows about 60 requests per hour – an
+    // epoch pack needs up to 13. If the limit is reached (or GitHub is
+    // unreachable), the bundled list (sammlungen.txt) applies.
     let mut api_ok = true;
     for r in repos {
         if st.library_cancel.load(Ordering::SeqCst) {
@@ -1546,7 +1547,7 @@ fn download_repos(handle: &AppHandle, dir: &Path, pack: &Pack, repos: &[Repo]) -
             }
         };
         let sub = Path::new(r.sub);
-        // Komponist der Sammlung für Partituren, die ihn nicht selbst nennen
+        // Composer of the collection for scores that do not name him themselves
         if let Some(c) = repo_composer(r.repo) {
             let d = dir.join(sub);
             if std::fs::create_dir_all(&d).is_ok() {
@@ -1586,7 +1587,7 @@ fn download_repos(handle: &AppHandle, dir: &Path, pack: &Pack, repos: &[Repo]) -
         Err(e) if e.kind() == std::io::ErrorKind::Interrupted => return Err(tr!("{name}: download cancelled.", name = name)),
         Err(e) => return Err(tr!("{name}: download failed: {error}", name = name, error = e)),
     };
-    // Einzelne Ausfälle hinnehmen, viele nicht (nächster Versuch lädt nur, was fehlt).
+    // Accept individual failures, but not many (the next attempt downloads only what is missing).
     if stats.failed > 0 && stats.failed * 10 > files.len() {
         return Err(tr!(
             "{name}: {failed} of {total} files not downloaded (e.g. {examples}) – \"Download\" tries again.",
@@ -1600,9 +1601,9 @@ fn download_repos(handle: &AppHandle, dir: &Path, pack: &Pack, repos: &[Repo]) -
     Ok(ExtractStats { files: stats.files, existing: stats.existing, bytes_written: stats.bytes, ..Default::default() })
 }
 
-/// Genre „Klassik“ für alle Partituren einer Sammlung – im selben Format wie
-/// die PDMX-Angaben, damit Baum und Bibliotheksinfo sie finden. Den Komponisten
-/// liefert die Partitur selbst.
+/// Genre `classical` for all scores of a collection – in the same format as
+/// the PDMX data, so that tree and library info find them. The composer
+/// comes from the score itself.
 fn write_collection_meta(dir: &Path) {
     let Ok(list) = collect_files(dir) else { return };
     let meta: std::collections::HashMap<String, pdmx::PdmxMeta> = list
@@ -1613,7 +1614,7 @@ fn write_collection_meta(dir: &Path) {
     let _ = pdmx::save_meta(&dir.join(pdmx::META_FILE), &meta);
 }
 
-/// Download + Entpacken (läuft im Hintergrund-Thread).
+/// Download + unpack (runs in the background thread).
 fn download_pack(handle: &AppHandle, dir: &Path, name: &str, limit: Option<usize>) -> Result<ExtractStats, String> {
     let st = handle.state::<AppState>();
     std::fs::create_dir_all(dir).map_err(|e| folder_error(dir, e))?;
@@ -1627,9 +1628,9 @@ fn download_pack(handle: &AppHandle, dir: &Path, name: &str, limit: Option<usize
         ),
     );
     let bytes = Arc::new(AtomicU64::new(0));
-    // Ein einziger Datenstrom über 1,9 GB: Reißt die Verbindung ab, geht es an
-    // derselben Stelle weiter (HTTP-Range) – das Entpacken merkt davon nichts.
-    // Für Tests: KLANGWELT_PDMX_URL=<Archiv auf einem lokalen Server>
+    // A single stream of 1.9 GB: if the connection drops, it continues at
+    // the same place (HTTP Range) – unpacking does not notice.
+    // For tests: KLANGWELT_PDMX_URL=<archive on a local server>
     let url = std::env::var("KLANGWELT_PDMX_URL").ok().filter(|u| !u.is_empty()).unwrap_or_else(|| PDMX_MXL_URL.to_string());
     let mut dl = fetch::ResumingDownload::new(&url, &st.download_child, &st.library_cancel, |pos, n, why| {
         if let Ok(mut s) = st.library_status.lock() {
@@ -1656,7 +1657,7 @@ fn download_pack(handle: &AppHandle, dir: &Path, name: &str, limit: Option<usize
         emit_info(handle);
     });
     let resumed = dl.resumed();
-    // curl beenden (bei Kostproben bewusst vor dem Ende des Archivs)
+    // stop curl (for samples deliberately before the end of the archive)
     drop(dl);
     match result {
         Ok(stats) => Ok(ExtractStats { resumed, ..stats }),
@@ -1672,7 +1673,7 @@ fn download_pack(handle: &AppHandle, dir: &Path, name: &str, limit: Option<usize
     }
 }
 
-/// Bytes als „812 MB“ bzw. „1,4 GB“.
+/// Bytes as "812 MB" or "1.4 GB".
 /// (Decimal separator of the chosen language.)
 fn mb_text(bytes: u64) -> String {
     if bytes >= 1_000_000_000 {
@@ -1698,7 +1699,7 @@ fn folder_error(dir: &Path, e: std::io::Error) -> String {
     tr!("Can't create the folder {folder}: {error}", folder = dir.display(), error = e)
 }
 
-/// Bricht einen laufenden Download oder Indexlauf ab.
+/// Cancels a running download or index run.
 #[tauri::command]
 pub async fn library_cancel(state: State<'_, AppState>) -> CmdResult<()> {
     state.library_cancel.store(true, Ordering::SeqCst);

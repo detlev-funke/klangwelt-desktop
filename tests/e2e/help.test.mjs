@@ -1,7 +1,7 @@
-// Kontexthilfe und Intro-Tour: Das Hilfefenster zeigt den ausführlichen Text
-// zum Element unter der Maus; F1 hält ihn fest (Schloss) und öffnet das
-// Fenster auch, wenn es geschlossen war. Jedes Bedienelement hat einen
-// Tooltip. Die Intro-Tour auf der Leerseite geht alle Fenster durch.
+// Context help and intro tour: The help window shows the detailed text
+// for the element under the mouse; F1 pins it (lock) and opens the
+// window even if it was closed. Every control has a
+// tooltip. The intro tour on the empty page goes through all windows.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startApp, makeTest, injectHelpers } from "./harness.mjs";
@@ -17,7 +17,7 @@ after(async () => {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Maus über ein Element (Mitte oder versetzt) bewegen. */
+/** Moves the mouse over an element (center or offset). */
 async function hover(selector, { dy = 0, fy } = {}) {
   const r = await app.eval((s) => {
     const el = document.querySelector(s);
@@ -38,7 +38,7 @@ const helpVisible = () => app.eval(() => {
   return !!el && el.getBoundingClientRect().width > 0;
 });
 
-test("Hilfe ist anfangs zu; F1 öffnet sie und hält den Text zum Element unter der Maus fest", async () => {
+test("help is closed at first; F1 opens it and pins the text for the element under the mouse", async () => {
   await app.reset();
   assert.equal(await helpVisible(), false, "startet geschlossen");
   await hover(".export-btn");
@@ -48,20 +48,20 @@ test("Hilfe ist anfangs zu; F1 öffnet sie und hält den Text zum Element unter 
   assert.equal(await app.eval(() => T.$("kw-help .help-lock").classList.contains("on")), true, "Schloss sichtbar");
   assert.match(await app.eval(() => T.$("kw-help .help-text").textContent), /Opus/);
   assert.match(await app.eval(() => T.$("kw-help .help-keys").textContent), /Strg\+E/);
-  // eingefroren: andere Elemente ändern nichts
+  // frozen: other elements change nothing
   await hover(".save-btn");
   assert.equal(await helpTitle(), "Exportieren");
-  // F1 auf einem anderen Element: hält jetzt dieses fest
+  // F1 on another element: now pins that one
   await app.key("F1");
   assert.equal(await helpTitle(), "Speichern");
-  // F1 noch einmal auf demselben: löst – dann folgt die Hilfe wieder der Maus
+  // F1 once more on the same one: releases – then the help follows the mouse again
   await app.key("F1");
   assert.equal(await app.eval(() => T.$("kw-help").classList.contains("frozen")), false);
   await hover("[data-help=metronom]");
   assert.equal(await helpTitle(), "Metronom");
 });
 
-test("Folgt der Maus: Tooltips, Fenster-Einträge, Lineal und Spuren getrennt; nicht über sich selbst", async () => {
+test("follows the mouse: tooltips, window entries, ruler and tracks separate; not over itself", async () => {
   await app.reset();
   await app.mcp("create_instrument_track", { kind: "pluck" });
   await app.eval(() => T.st.act(window.__TAURI__.core.invoke("get_state")));
@@ -81,16 +81,16 @@ test("Folgt der Maus: Tooltips, Fenster-Einträge, Lineal und Spuren getrennt; n
   await app.mouse("mouseMoved", ruler.x, ruler.top + 70);
   await sleep(120);
   assert.equal(await helpTitle(), "Zeitleiste");
-  // Element ohne eigenen Eintrag: Tooltip oben, darunter das Fenster
+  // Element without its own entry: tooltip on top, the window below
   await app.eval(() => T.st.showPanel("song"));
   await app.waitFor(() => T.$(".song-play"), { what: "Song-Fenster" });
   await hover(".song-play");
   assert.equal(await helpTitle(), "Fenster „Song“");
   assert.equal(await app.eval(() => T.$("kw-help .help-tip").textContent), "Von vorn abspielen");
-  // über dem Hilfefenster bleibt der Text stehen
+  // over the help window the text stays put
   await hover("kw-help .help-text");
   assert.equal(await helpTitle(), "Fenster „Song“");
-  // Klick aufs Schloss hält fest, noch ein Klick löst
+  // Click on the lock pins, another click releases
   await app.clickOn("kw-help .help-lock");
   assert.equal(await app.eval(() => T.$("kw-help").classList.contains("frozen")), true);
   await hover(".export-btn");
@@ -100,7 +100,7 @@ test("Folgt der Maus: Tooltips, Fenster-Einträge, Lineal und Spuren getrennt; n
   assert.equal(await helpTitle(), "Exportieren");
 });
 
-test("Geschlossenes Hilfefenster: F1 holt es zurück", async () => {
+test("closed help window: F1 brings it back", async () => {
   if (!(await helpVisible())) await app.key("F1");
   const tab = await app.center(".dk-tab[data-panel=hilfe]");
   await app.click(tab.x, tab.y, { button: "middle" });
@@ -109,8 +109,8 @@ test("Geschlossenes Hilfefenster: F1 holt es zurück", async () => {
   await app.key("F1");
   await app.waitFor(() => T.$("kw-help")?.getBoundingClientRect().width > 0, { what: "Hilfe wieder offen" });
   assert.equal(await helpTitle(), "Speichern");
-  // F1 wirkt auch beim Tippen in einem Feld
-  await app.key("F1"); // lösen
+  // F1 also works while typing in a field
+  await app.key("F1"); // release
   await app.eval(() => T.$("[data-help=tempo] input").focus());
   await app.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "F1", code: "F1", windowsVirtualKeyCode: 112, nativeVirtualKeyCode: 112 });
   await app.send("Input.dispatchKeyEvent", { type: "keyUp", key: "F1", code: "F1", windowsVirtualKeyCode: 112, nativeVirtualKeyCode: 112 });
@@ -118,7 +118,7 @@ test("Geschlossenes Hilfefenster: F1 holt es zurück", async () => {
   assert.equal(await app.eval(() => T.$("kw-help").classList.contains("frozen")), true);
 });
 
-test("Jedes sichtbare Bedienelement hat einen Tooltip (selbst oder am Rahmen)", async () => {
+test("every visible control has a tooltip (itself or on its frame)", async () => {
   await app.reset();
   const missing = async (where) => app.eval((w) => {
     const roots = w === "leer" ? [T.$("kw-transport"), T.$("main.workspace")] : [T.$(`kw-panel[tab="${w}"]`)];
@@ -159,10 +159,10 @@ async function step(n, total) {
   await sleep(150);
 }
 
-test("Intro-Tour: gelber Knopf auf der Leerseite, Demo-Inhalte in jedem Fenster, danach wie vorher", async () => {
+test("intro tour: yellow button on the empty page, demo content in every window, afterwards as before", async () => {
   await app.reset();
-  // Download-Übersicht vorher zu (ohne Bibliothek klappt sie von selbst auf) –
-  // die Tour öffnet sie im Bibliotheks-Schritt und schließt sie danach wieder
+  // Download overview closed beforehand (without a library it opens by itself) –
+  // the tour opens it in the library step and closes it again afterwards
   await app.eval(() => T.st.showPanel("bibliothek"));
   await sleep(600);
   await app.eval(() => {
@@ -228,23 +228,23 @@ test("Intro-Tour: gelber Knopf auf der Leerseite, Demo-Inhalte in jedem Fenster,
     assert.ok(x.hole && x.hole[0] > 100, `${title}: Fenster hervorgehoben`);
     assert.ok(x.visible.includes(panel), `${title}: Fenster aufgeschlagen`);
   }
-  // die unteren Fenster bekommen mehr Platz, die Spuren behalten ihren
+  // the lower windows get more room, the tracks keep theirs
   assert.ok(by("Spuren").spurenH > by("Spuren").untenH, `Spuren groß: ${by("Spuren").spurenH} > ${by("Spuren").untenH}`);
   for (const t of ["Clip", "Analyse", "Klang", "Rhythmus", "Song", "Bibliothek", "Fuge"]) {
     const x = by(t);
     assert.ok(x.untenH > x.spurenH * 1.3, `${t}: unten vergrößert (${Math.round(x.untenH)} zu ${Math.round(x.spurenH)})`);
   }
-  // Harmonie: breit genug für zwei Spalten, die Kadenzen sind zu sehen
+  // Harmony: wide enough for two columns, the cadences are visible
   assert.ok(by("Harmonie").harmonieW >= 700, `Harmonie breit: ${Math.round(by("Harmonie").harmonieW)} px`);
   assert.equal(by("Harmonie").hcCols, 2, "Zirkel links, Fortsetzungen und Kadenzen rechts");
   assert.ok(by("Harmonie").wegeSichtbar, "Wege zum Schluss sichtbar");
   assert.ok(by("Harmonie").zirkelSichtbar, "Quintenzirkel ganz zu sehen");
-  // Bibliothek: Download-Übersicht offen – im nächsten Schritt wieder zu
+  // Library: download overview open – closed again in the next step
   assert.ok(by("Bibliothek").katalog, "Download-Übersicht offen");
   assert.equal(by("Fuge").katalog, false, "danach wieder zu");
-  // Klang: die Felder links bekommen den meisten Platz
+  // Sound: the fields on the left get the most room
   assert.ok(by("Klang").klangLinks > by("Klang").klangRechts * 1.6, `Klang: links ${Math.round(by("Klang").klangLinks)} px, rechts ${Math.round(by("Klang").klangRechts)} px`);
-  // Demo-Inhalte in den Fenstern
+  // demo content in the windows
   assert.ok(by("Spuren").notes >= 2, "Spuren: Zettel an Stumm/Solo und Klaviatur");
   assert.ok(by("Clip").dyn >= 6, "Clip: Vortragszeichen des Themas");
   assert.ok(by("Analyse").analyse, "Analyse: Kurve der Arpeggio-Aufnahme");
@@ -252,7 +252,7 @@ test("Intro-Tour: gelber Knopf auf der Leerseite, Demo-Inhalte in jedem Fenster,
   assert.ok(by("Fuge").fuge, "Fuge: Thema gewählt");
   assert.ok(by("Harmonie").pos > 1, `Harmonie: Abspielposition in Takt 2 (${by("Harmonie").pos} s)`);
   assert.equal(by("Hilfe").help, "Wiedergabe", "Hilfe erklärt den Abspielknopf");
-  // letzter Schritt: „Fertig“ nimmt die Demo zurück; die Reiter sind wieder wie vorher
+  // last step: "Done" takes the demo back; the tabs are as before
   assert.ok(await app.eval(() => !!T.$(".tour-btn.keep")), "Knopf „Demo behalten“");
   await app.clickOn(".tour-btn.primary");
   await app.waitFor(() => !T.$(".tour"), { what: "Tour zu" });
@@ -261,12 +261,12 @@ test("Intro-Tour: gelber Knopf auf der Leerseite, Demo-Inhalte in jedem Fenster,
   const after = await app.eval(() => [...T.st.visiblePanels.peek()].filter((x) => x !== "hilfe").sort());
   assert.deepEqual(after, before.filter((x) => x !== "hilfe"));
   assert.equal(await app.eval(() => T.$("kw-panel[tab=analyse] canvas")), null, "keine alte Analyse");
-  // Größen wieder wie vorher – auch im gespeicherten Layout
+  // sizes as before – also in the saved layout
   const h1 = await heights();
   assert.ok(Math.abs(h1.spuren - h0.spuren) <= 2 && Math.abs(h1.unten - h0.unten) <= 2, `Größen zurück: ${JSON.stringify(h0)} → ${JSON.stringify(h1)}`);
 });
 
-test("Intro-Tour: „Demo behalten“ lässt die Spuren stehen; Esc beendet und räumt auf", async () => {
+test("intro tour: “Keep demo” leaves the tracks in place; Esc ends it and cleans up", async () => {
   await app.reset();
   await app.clickOn(".intro-btn");
   await app.waitFor(() => T.$(".tour-card"), { what: "Tour", timeout: 15000 });
@@ -276,7 +276,7 @@ test("Intro-Tour: „Demo behalten“ lässt die Spuren stehen; Esc beendet und 
   await app.waitFor(() => !T.$(".tour"), { what: "Tour zu" });
   await sleep(300);
   assert.equal(await tracks(), 3, "Demo bleibt");
-  // Esc mitten in der Tour: Demo wieder weg; ← geht zurück
+  // Esc in the middle of the tour: demo gone again; ← goes back
   await app.reset();
   await app.clickOn(".intro-btn");
   await app.waitFor(() => T.$(".tour-card"), { what: "Tour", timeout: 15000 });
@@ -289,7 +289,7 @@ test("Intro-Tour: „Demo behalten“ lässt die Spuren stehen; Esc beendet und 
   await app.waitFor(() => T.st.snapshot.peek().project.tracks.length === 0, { what: "Demo zurückgenommen" });
 });
 
-/** Layout setzen (oder mit null das Standardlayout) und die Oberfläche neu laden. */
+/** Sets the layout (or with null the default layout) and reloads the UI. */
 async function withLayout(layout) {
   await app.eval((l) => {
     if (l) localStorage.setItem("klangwelt.dock.v1", JSON.stringify(l));
@@ -301,9 +301,9 @@ async function withLayout(layout) {
   await sleep(300);
 }
 
-test("Tour vergrößert unten auch, wenn das Werkzeugfenster in einer Zeile neben dem Agenten liegt", async () => {
+test("tour also enlarges at the bottom when the tool window sits in a row next to the agent", async () => {
   await app.reset();
-  // wie bei der Person: oben Spuren | Harmonie, unten Werkzeuge | Agent
+  // like the person: tracks | harmony on top, tools | agent below
   const stack = (panels) => ({ kind: "stack", panels, active: panels[0] });
   await withLayout({
     root: { kind: "split", dir: "col", sizes: [0.62, 0.38], children: [
@@ -322,7 +322,7 @@ test("Tour vergrößert unten auch, wenn das Werkzeugfenster in einer Zeile nebe
   await app.clickOn(".intro-btn");
   await app.waitFor(() => T.$(".tour-card"), { what: "Tour", timeout: 15000 });
   const total = Number((await count()).split("/")[1]);
-  for (let i = 2; i <= 4; i++) await step(i, total); // bis „Clip“
+  for (let i = 2; i <= 4; i++) await step(i, total); // up to "Clip"
   assert.match(await app.eval(() => T.$(".tour-title").textContent), /^Clip/);
   const h1 = await h();
   assert.ok(h1.unten > h1.spuren * 1.3, `unten höher: ${JSON.stringify(h1)}`);
@@ -335,7 +335,7 @@ test("Tour vergrößert unten auch, wenn das Werkzeugfenster in einer Zeile nebe
   await withLayout(null);
 });
 
-test("Kleines Fenster: unten wird in der Tour noch höher", async () => {
+test("small window: at the bottom the tour gets even taller", async () => {
   await app.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
   try {
     await sleep(400);
@@ -343,13 +343,13 @@ test("Kleines Fenster: unten wird in der Tour noch höher", async () => {
     await app.clickOn(".intro-btn");
     await app.waitFor(() => T.$(".tour-card"), { what: "Tour", timeout: 15000 });
     const total = Number((await count()).split("/")[1]);
-    for (let i = 2; i <= 4; i++) await step(i, total); // bis „Clip“
+    for (let i = 2; i <= 4; i++) await step(i, total); // up to "Clip"
     const r = await app.eval(() => {
       const spuren = T.$("main.workspace").closest(".dk-stack").getBoundingClientRect().height;
       const unten = T.$("kw-panel[tab=clip]").closest(".dk-stack").getBoundingClientRect().height;
       return { spuren, unten, anteil: unten / (spuren + unten) };
     });
-    // höher als die üblichen 62 % – bis die Spuren ihre Mindesthöhe (200 px) erreichen
+    // higher than the usual 62 % – until the tracks reach their minimum height (200 px)
     assert.ok(r.anteil > 0.66 && r.spuren <= 215, `unten ${Math.round(r.unten)} px, oben ${Math.round(r.spuren)} px (${Math.round(r.anteil * 100)} %)`);
     await app.key("Escape");
     await app.waitFor(() => !T.$(".tour"), { what: "Tour zu" });
@@ -359,7 +359,7 @@ test("Kleines Fenster: unten wird in der Tour noch höher", async () => {
   }
 });
 
-test("Schließen während der Tour: Tour endet, Demo verschwindet, dann schließt die App", async () => {
+test("closing during the tour: tour ends, demo disappears, then the app closes", async () => {
   await app.reset();
   await app.clickOn(".intro-btn");
   await app.waitFor(() => T.$(".tour-card"), { what: "Tour", timeout: 15000 });
@@ -367,7 +367,7 @@ test("Schließen während der Tour: Tour endet, Demo verschwindet, dann schließ
   await step(2, total);
   await step(3, total);
   assert.equal(await app.eval(() => T.st.snapshot.peek().dirty), true, "Demo macht das Projekt ungespeichert");
-  // Fenster schließen – das echte Beenden fangen wir ab
+  // close the window – we intercept the real quit
   await app.eval(async () => {
     const { backend } = await import("./bridge.js");
     window.__closeCalls = 0;
@@ -378,7 +378,7 @@ test("Schließen während der Tour: Tour endet, Demo verschwindet, dann schließ
   assert.equal(await app.eval(() => !!T.$(".tour")), false, "Tour beendet");
   assert.equal(await tracks(), 0, "Demo zurückgenommen");
   assert.equal(await app.eval(() => !!T.$(".modal-back")), false, "kein Dialog");
-  // Dialoge liegen über der Tour
+  // dialogs lie above the tour
   assert.ok(await app.eval(() => {
     const probe = document.createElement("div");
     probe.className = "modal-back";

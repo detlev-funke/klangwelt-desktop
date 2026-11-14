@@ -1,5 +1,5 @@
-// Agent-Schnittstelle (MCP über HTTP) und Chat: Werkzeuge, Projekt lesen/ändern,
-// Änderungen erscheinen sofort in der Oberfläche, Chat-Nachrichten hin und zurück.
+// Agent interface (MCP over HTTP) and chat: tools, reading/changing the project,
+// changes appear in the UI immediately, chat messages back and forth.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -15,7 +15,7 @@ after(async () => {
   await app?.close();
 });
 
-/** JSON-RPC an den MCP-Server, optional mit Sitzung; liefert Antwort und Sitzungs-ID. */
+/** JSON-RPC to the MCP server, optionally with a session; returns response and session ID. */
 async function rpc(method, params = {}, session = null) {
   const headers = { "content-type": "application/json", accept: "application/json, text/event-stream" };
   if (session) headers["mcp-session-id"] = session;
@@ -23,11 +23,11 @@ async function rpc(method, params = {}, session = null) {
   return { body: await r.json(), session: r.headers.get("mcp-session-id") };
 }
 
-/** Prompt aus dem Verbinden-Kasten (der erste Test liest ihn, solange noch kein Agent zuhört). */
+/** Prompt from the connect box (the first test reads it while no agent is listening yet). */
 let prompt = "";
 
-// Läuft vor dem Statustest und schickt selbst keine Anfrage an den Endpunkt.
-test("Verbinden-Kasten: genau ein Prompt zum Kopieren statt Befehlen zur MCP-Einrichtung", async () => {
+// Runs before the status test and sends no request to the endpoint itself.
+test("connect box: exactly one prompt to copy instead of MCP setup commands", async () => {
   await app.eval(() => T.st.showPanel("agent"));
   await app.waitFor(() => !!T.$(".chat-status .connect .connect-cmd"), { what: "Verbinden-Kasten" });
   const box = await app.eval(async () => {
@@ -50,8 +50,8 @@ test("Verbinden-Kasten: genau ein Prompt zum Kopieren statt Befehlen zur MCP-Ein
   for (const w of ["initialize", "result.instructions", "tools/list", "tools/call", "chat_poll", "chat_reply", "Subagent"]) assert.ok(prompt.includes(w), `${w} fehlt im Prompt`);
 });
 
-// Muss vor allen Tests laufen, die den Endpunkt anfragen: Jede MCP-Anfrage zählt als verbundener Agent.
-test("Agent-Status: ohne Verbindung „Kein Agent verbunden“, mit Sitzung „Agent bereit“, abgemeldet wieder ohne, beim Zuhören „Agent hört zu“", async () => {
+// Must run before all tests that query the endpoint: every MCP request counts as a connected agent.
+test("agent status: without a connection “No agent connected”, with a session “Agent ready”, signed off again without, while listening “Agent listening”", async () => {
   const chip = () => app.eval(() => ({ text: T.$(".chip.agent").textContent, warn: T.$(".chip.agent").classList.contains("warn"), title: T.$(".chip.agent").title }));
   const panelStatus = () => app.eval(() => T.$(".chat-status .status-text")?.textContent ?? "");
   let c = await chip();
@@ -62,7 +62,7 @@ test("Agent-Status: ohne Verbindung „Kein Agent verbunden“, mit Sitzung „A
   await app.eval(() => T.st.showPanel("agent"));
   await app.waitFor(() => T.$(".chat-status .status-text")?.textContent.startsWith("Kein Agent verbunden"), { what: "Status im Agent-Fenster" });
 
-  // Agent meldet sich an (wie Claude Code beim Start): initialize → Sitzung
+  // Agent connects (like Claude Code at startup): initialize → session
   const init = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "e2e", version: "1" } });
   const sid = init.session;
   assert.ok(sid, "Sitzungs-ID");
@@ -73,29 +73,29 @@ test("Agent-Status: ohne Verbindung „Kein Agent verbunden“, mit Sitzung „A
   assert.match(c.title, /Ein Agent ist verbunden/);
   assert.match(await panelStatus(), /Ein Agent ist verbunden, hört aber nicht zu/);
 
-  // Sitzung beenden (DELETE, wie beim Schließen des Clients) → wieder ohne
+  // End the session (DELETE, as when the client closes) → back to without
   const del = await fetch(`http://127.0.0.1:${app.mcpPort}/mcp`, { method: "DELETE", headers: { "mcp-session-id": sid } });
   assert.equal(del.status, 200);
   await app.waitFor(() => T.$(".chip.agent").textContent === "Kein Agent verbunden", { what: "nach dem Abmelden wieder „Kein Agent verbunden“" });
   assert.equal(await app.eval(() => T.st.chat.peek().agentConnected), false);
 
-  // Wie Claude Code: Ereignisstrom (GET /mcp) offen halten – verbunden, solange er offen ist
+  // Like Claude Code: keep the event stream (GET /mcp) open – connected as long as it is open
   const sb = (await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {} })).session;
   const ctl = new AbortController();
   const res = await fetch(`http://127.0.0.1:${app.mcpPort}/mcp`, { headers: { accept: "text/event-stream", "mcp-session-id": sb }, signal: ctl.signal });
   assert.equal(res.status, 200);
   assert.match(res.headers.get("content-type"), /text\/event-stream/);
-  const reading = res.body.getReader().read().catch(() => null); // erstes Lebenszeichen
+  const reading = res.body.getReader().read().catch(() => null); // first sign of life
   assert.ok(await reading, "Strom liefert ein Lebenszeichen");
   await app.waitFor(() => T.$(".chip.agent").textContent === "Agent bereit", { what: "„Agent bereit“ mit offenem Strom" });
-  // Client beendet sich (Strom zu) – die Anzeige springt nach wenigen Sekunden zurück,
-  // obwohl seine letzte Anfrage eben erst war
+  // Client exits (stream closed) – the indicator jumps back after a few seconds,
+  // although its last request was only just now
   const closedAt = Date.now();
   ctl.abort();
   await app.waitFor(() => T.$(".chip.agent").textContent === "Kein Agent verbunden", { what: "„Kein Agent verbunden“ nach dem Schließen des Stroms", timeout: 10000 });
   assert.ok(Date.now() - closedAt < 8000, `nach ${Date.now() - closedAt} ms`);
 
-  // Neue Sitzung, Agent hört zu (chat_poll wartet) → „Agent hört zu“
+  // New session, agent is listening (chat_poll waits) → "Agent listening"
   const s2 = (await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {} })).session;
   const poll = rpc("tools/call", { name: "chat_poll", arguments: { timeoutSeconds: 2 } }, s2);
   await app.waitFor(() => T.$(".chip.agent").textContent === "Agent hört zu", { what: "„Agent hört zu“" });
@@ -103,10 +103,10 @@ test("Agent-Status: ohne Verbindung „Kein Agent verbunden“, mit Sitzung „A
   await poll;
 });
 
-test("Verbinden per Prompt: die curl-Aufrufe daraus funktionieren wörtlich, Werkzeuge gehen ohne Sitzung", async () => {
+test("connecting via prompt: the curl calls from it work verbatim, tools work without a session", async () => {
   assert.ok(prompt, "Prompt aus dem ersten Test");
   const url = `http://127.0.0.1:${app.mcpPort}/mcp`;
-  // Jede curl-Zeile des Prompts ausführen (Argumente ohne Shell, damit kein Quoting stört)
+  // Run every curl line of the prompt (arguments without a shell, so no quoting gets in the way)
   const lines = prompt.split("\n").filter((l) => l.startsWith("curl "));
   assert.equal(lines.length, 2, "initialize und chat_poll");
   const curl = async (line, patch = (b) => b) => {
@@ -120,13 +120,13 @@ test("Verbinden per Prompt: die curl-Aufrufe daraus funktionieren wörtlich, Wer
   const init = await curl(lines[0]);
   assert.equal(init.result.serverInfo.name, "klangwelt");
   assert.match(init.result.instructions, /chat_poll/);
-  // chat_poll wie im Prompt, nur mit 1 s statt 280 s Wartezeit
+  // chat_poll as in the prompt, only with 1 s instead of 280 s wait time
   assert.match(lines[1], /"timeoutSeconds":280/);
   const polled = await curl(lines[1], (b) => b.replace('"timeoutSeconds":280', '"timeoutSeconds":1'));
   assert.ok(!polled.result.isError, JSON.stringify(polled));
   assert.deepEqual(polled.result.structuredContent.auftraege, []);
 
-  // So wie der Prompt es beschreibt: nur Content-Type, keine Sitzung – Werkzeuge gehen trotzdem
+  // As the prompt describes it: only Content-Type, no session – tools work anyway
   const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "get_project", arguments: {} } }) });
   assert.equal(r.status, 200);
   const res = await r.json();
@@ -134,7 +134,7 @@ test("Verbinden per Prompt: die curl-Aufrufe daraus funktionieren wörtlich, Wer
   assert.ok(Array.isArray(JSON.parse(res.result.content[0].text).tracks), "Projekt mit Spuren");
 });
 
-test("Werkzeugliste: alle Kernwerkzeuge da", async () => {
+test("tool list: all core tools present", async () => {
   const r = await app.mcpRaw("tools/list");
   const names = r.tools.map((t) => t.name);
   for (const n of ["get_project", "execute", "undo", "redo", "transport", "set_metronome", "audio_devices", "set_audio_device", "export_project", "chat_poll", "chat_reply", "create_instrument_track",
@@ -143,7 +143,7 @@ test("Werkzeugliste: alle Kernwerkzeuge da", async () => {
   }
 });
 
-test("execute legt eine Spur an – die Oberfläche zeigt sie sofort", async () => {
+test("execute creates a track – the UI shows it immediately", async () => {
   await app.reset();
   await app.mcp("execute", { commands: [{ type: "addTrack", track: { id: 0, name: "Vom Agenten", kind: "instrument" } }], label: "Test" });
   await app.waitFor(() => T.st.snapshot.peek().project.tracks.some((t) => t.name === "Vom Agenten"), { what: "Spur in der Oberfläche" });
@@ -153,7 +153,7 @@ test("execute legt eine Spur an – die Oberfläche zeigt sie sofort", async () 
   await app.waitFor(() => T.st.snapshot.peek().project.tracks.length === 0, { what: "rückgängig" });
 });
 
-test("Instrumentspur anlegen und Akkorde schreiben", async () => {
+test("create an instrument track and write chords", async () => {
   await app.reset();
   await app.mcp("write_chords", { key: "C-Dur", chords: ["C", "F", "G7", "C"] });
   const t = await app.waitFor(() => T.st.snapshot.peek().project.tracks.find((t) => t.name === "Akkorde") ?? null, { what: "Spur Akkorde" });
@@ -162,7 +162,7 @@ test("Instrumentspur anlegen und Akkorde schreiben", async () => {
   assert.match(JSON.stringify(a), /C-Dur/);
 });
 
-test("Transport und Metronom über den Agenten", async () => {
+test("transport and metronome via the agent", async () => {
   await app.mcp("transport", { action: "play" });
   await app.waitFor(() => T.st.status.peek().playing, { what: "spielt" });
   await app.mcp("transport", { action: "stop" });
@@ -172,7 +172,7 @@ test("Transport und Metronom über den Agenten", async () => {
   await app.waitFor((m) => T.st.snapshot.peek().engine.metronome === !m, { what: "Metronom" }, m);
 });
 
-test("Chat: Nachricht aus dem Fenster kommt beim Agenten an, Antwort erscheint im Fenster", async () => {
+test("chat: message from the window reaches the agent, reply appears in the window", async () => {
   await app.eval(() => T.st.showPanel("agent"));
   await app.waitFor(() => !!T.$("textarea.chat-input"), { what: "Chatfeld" });
   await app.eval(async () => {
@@ -189,7 +189,7 @@ test("Chat: Nachricht aus dem Fenster kommt beim Agenten an, Antwort erscheint i
   await app.waitFor(() => T.$$(".msg-text").some((m) => m.textContent === "Erledigt: Kick tiefer."), { what: "Antwort im Chat" });
 });
 
-test("Chat: jede Nachricht trägt die Lage – hörbare, stumme, Solo-Spuren und den markierten Zeitraum", async () => {
+test("chat: every message carries the situation – audible, muted, solo tracks and the selected time range", async () => {
   await app.reset();
   const ids = await app.eval(async () => {
     for (const name of ["Bass", "Melodie", "Pad"]) await T.st.run({ type: "addTrack", track: { id: 0, name, kind: "instrument" } });
@@ -214,10 +214,10 @@ test("Chat: jede Nachricht trägt die Lage – hörbare, stumme, Solo-Spuren und
   assert.match(k, new RegExp(`Stumm: „Pad“ \\(${ids[2]}\\)`), k);
   assert.match(k, /Markierter Zeitraum: Takt 3–4 \(Schlag 8 bis 16\)/, k);
   assert.doesNotMatch(k, /Solo/);
-  // im Chat sichtbar unter der eigenen Nachricht
+  // visible in the chat below the user's own message
   await app.waitFor(() => T.$$(".msg-context").some((e) => e.textContent.includes("Markierter Zeitraum")), { what: "Kontext im Chat" });
   await app.mcp("chat_reply", { replyTo: polled.auftraege[0].id, text: "ok" });
-  // Solo und kein Zeitraum
+  // Solo and no time range
   await app.eval(async (id) => {
     await T.st.run({ type: "setTrack", trackId: id, patch: { solo: true } });
     await window.__TAURI__.core.invoke("set_loop_range", { range: null });
@@ -231,6 +231,6 @@ test("Chat: jede Nachricht trägt die Lage – hörbare, stumme, Solo-Spuren und
   await app.mcp("chat_reply", { replyTo: polled.auftraege[0].id, text: "ok" });
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });

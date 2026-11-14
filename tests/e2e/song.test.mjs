@@ -1,8 +1,8 @@
-// Song-Fenster: Vorlagen ganzer Stücke (Trance, Ambient …) und ein
-// Mini-Editor – Abschnitte als Spalten, Rollen als Zeilen, je Zelle eine Stufe
-// (aus / sparsam / voll). „Song erzeugen“ legt die Spuren an (ein Clip je
-// Abschnitt, Trommeln in einer Spur), neu erzeugen ersetzt sie; ein
-// Rückgängig-Schritt. Dazu „Mit Song starten ▾“ im leeren Projekt und der Agent.
+// Song window: templates of whole pieces (trance, ambient …) and a
+// mini editor – sections as columns, roles as rows, one level per cell
+// (off / sparse / full). "Generate song" creates the tracks (one clip per
+// section, drums in one track), generating again replaces them; one
+// undo step. Plus "Start with a song ▾" in the empty project and the agent.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startApp, makeTest } from "./harness.mjs";
@@ -29,7 +29,7 @@ const level = (layer, section) => app.eval((s) => {
 const summary = () => app.eval(() => T.$(".song-summary").textContent);
 const undo = () => app.eval(() => T.st.act(window.__TAURI__.core.invoke("undo")));
 
-test("Vorlagen und Raster: Abschnitte als Spalten, Rollen als Zeilen", async () => {
+test("templates and grid: sections as columns, roles as rows", async () => {
   await app.reset();
   await openSong();
   assert.deepEqual(await app.eval(() => T.$$(".song-tpl").map((b) => b.textContent)), ["Trance", "Ambient", "Deep House", "Synthwave", "Lo-Fi"]);
@@ -40,20 +40,20 @@ test("Vorlagen und Raster: Abschnitte als Spalten, Rollen als Zeilen", async () 
   assert.deepEqual(await app.eval(() => T.$$(".song-layer b").map((b) => b.textContent)),
     ["Fläche", "Arpeggio", "Bass", "Lead", "Kick", "Hi-Hats", "Clap", "Percussion", "Übergänge"]);
   assert.equal(await summary(), "8 Abschnitte · 120 Takte · 3:29 min");
-  // erst nur Flächen, dann wächst es
+  // first only pads, then it grows
   assert.equal(await level("pad", 0), 1);
   assert.equal(await level("kick", 0), 0);
   assert.equal(await level("kick", 1), 1);
   assert.equal(await level("kick", 5), 2);
-  // Spalten so breit wie ihre Takte
+  // columns as wide as their bars
   const w = await app.eval(() => T.$$(".song-sec").map((s) => Math.round(s.getBoundingClientRect().width)));
   assert.ok(w[4] < w[0], `Steigerung (8 T.) schmaler als Intro (16 T.): ${w}`);
 });
 
-test("Zellen, Abschnitte und Eigenschaften bearbeiten – der Plan bleibt gemerkt", async () => {
+test("edit cells, sections and properties – the plan stays remembered", async () => {
   await openSong();
   await app.clickOn(".song-tpl", { text: "Trance" });
-  // aus → sparsam → voll → aus; Umschalt+Klick zurück
+  // off → sparse → full → off; Shift+click back
   await app.clickOn(cell("lead", 0));
   assert.equal(await level("lead", 0), 1);
   await app.clickOn(cell("lead", 0));
@@ -61,7 +61,7 @@ test("Zellen, Abschnitte und Eigenschaften bearbeiten – der Plan bleibt gemerk
   await app.clickOn(cell("lead", 0), { mods: 8 });
   assert.equal(await level("lead", 0), 1);
   assert.match(await app.eval(() => T.$(".song-desc").textContent), /bearbeitet/);
-  // Abschnitt verdoppeln, verschieben, entfernen; Takte ändern
+  // duplicate section, move, remove; change bars
   await app.clickOn('.song-sec[data-index="4"] .song-sec-tools .btn[title="verdoppeln"]');
   assert.equal((await app.eval(() => T.$$(".song-sec-name").map((i) => i.value)))[5], "Steigerung 2");
   assert.equal(await summary(), "9 Abschnitte · 128 Takte · 3:43 min");
@@ -74,7 +74,7 @@ test("Zellen, Abschnitte und Eigenschaften bearbeiten – der Plan bleibt gemerk
     s.dispatchEvent(new Event("change"));
   });
   assert.equal(await summary(), "8 Abschnitte · 112 Takte · 3:15 min");
-  // Tempo und Akkorde
+  // Tempo and chords
   await app.eval(() => {
     const t = T.$(".song-tempo");
     t.value = "140";
@@ -88,13 +88,13 @@ test("Zellen, Abschnitte und Eigenschaften bearbeiten – der Plan bleibt gemerk
   assert.deepEqual(saved.chords, ["a", "d", "E"]);
   assert.equal(saved.sections[0].name, "Thema");
   assert.equal(saved.sections[1].levels.lead, 1);
-  // Vorlage erneut anklicken: zurück zum Original
+  // click the template again: back to the original
   await app.clickOn(".song-tpl", { text: "Trance" });
   assert.equal(await summary(), "8 Abschnitte · 120 Takte · 3:29 min");
   assert.doesNotMatch(await app.eval(() => T.$(".song-desc").textContent), /bearbeitet/);
 });
 
-test("Song erzeugen: Spuren mit Clips je Abschnitt, neu erzeugen ersetzt, ein Rückgängig-Schritt", async () => {
+test("generate song: tracks with clips per section, regenerating replaces, one undo step", async () => {
   await app.reset();
   await openSong();
   await app.clickOn(".song-tpl", { text: "Trance" });
@@ -112,21 +112,21 @@ test("Song erzeugen: Spuren mit Clips je Abschnitt, neu erzeugen ersetzt, ein R�
   assert.equal(beat.instrument.kind, "drums");
   assert.equal(beat.clips[0].startBeats, 64, "Beat erst nach dem Intro");
   assert.ok(await app.eval(() => T.st.viewport.peek().pxPerBeat < 6), "Zeitleiste zeigt den ganzen Song");
-  // Lead schon im Intro und neu erzeugen: ersetzt, statt zu verdoppeln
+  // lead already in the intro and generate again: replaces instead of doubling
   await app.clickOn(cell("lead", 0));
   await app.clickOn(".song-write");
   await app.waitFor(() => T.st.snapshot.peek().project.tracks.find((t) => t.name === "Lead")?.clips[0]?.name === "Intro", { what: "Lead im Intro", timeout: 20000 });
   p = await proj();
   assert.equal(p.tracks.length, 5, "ersetzt");
   assert.match(await app.eval(() => T.st.snapshot.peek().undoLabel), /Song „Trance“ neu erzeugen/);
-  // ein Rückgängig: der vorige Song; noch eins: leer
+  // one undo: the previous song; one more: empty
   await undo();
   await app.waitFor(() => T.st.snapshot.peek().project.tracks.find((t) => t.name === "Lead")?.clips[0]?.name === "Break", { what: "voriger Song" });
   await undo();
   await app.waitFor(() => T.st.snapshot.peek().project.tracks.length === 0, { what: "leer" });
 });
 
-test("Leeres Projekt: „Mit Song starten ▾“ legt den Song an und öffnet das Song-Fenster", async () => {
+test("empty project: “Start with a song ▾” creates the song and opens the song window", async () => {
   await app.reset();
   await app.eval(() => T.st.showPanel("clip"));
   await app.waitFor(() => T.$(".empty-hint .song-start")?.checkVisibility(), { what: "Knopf" });
@@ -138,7 +138,7 @@ test("Leeres Projekt: „Mit Song starten ▾“ legt den Song an und öffnet da
   await app.waitFor(() => T.$(".song")?.checkVisibility() && T.$(".song-tpl.on")?.textContent === "Ambient", { what: "Song-Fenster mit Ambient" });
 });
 
-test("Agent: Vorlagen auflisten, Song mit eigenen Abschnitten schreiben", async () => {
+test("agent: list templates, write a song with custom sections", async () => {
   await app.reset();
   const list = await app.mcp("list_song_templates", {});
   assert.equal(list.vorlagen.length, 5);
@@ -158,13 +158,13 @@ test("Agent: Vorlagen auflisten, Song mit eigenen Abschnitten schreiben", async 
   const p = await proj();
   assert.equal(p.tempoBpm, 132);
   const pad = p.tracks.find((t) => t.name === "Fläche");
-  // d-Moll: Grundtöne d (2) und B (10) kommen vor
+  // D minor: roots d (2) and B (10) occur
   const pcs = new Set(pad.clips.flatMap((c) => c.source.notes.map((n) => n.pitch % 12)));
   assert.ok(pcs.has(2) && pcs.has(10), [...pcs].join(","));
   await assert.rejects(app.mcp("write_song", { template: "polka" }), /Keine Song-Vorlage „polka“/);
   await assert.rejects(app.mcp("write_song", { template: "trance", key: "lila" }), /Tonart „lila“/);
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });

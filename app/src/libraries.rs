@@ -1,13 +1,13 @@
-//! Bibliotheken: Jede ist genau eine Indexdatei (`Indizes/<Name>.kwix` im
-//! Bibliotheksordner), gesucht wird immer nur in der aktiven. Welche es gibt,
-//! was in ihnen steckt und welche aktiv ist, steht in `bibliotheken.json` im
-//! Bibliotheksordner – beim Start lädt die App die aktive, egal wie sie
-//! gestartet wurde. Neue Partituren (Pakete, Ordner, Dateien) werden für sich
-//! indiziert und mit der Indexdatei verschmolzen ([`merge_into`]); was die
-//! Bibliothek schon hat, wird dabei übersprungen.
+//! Libraries: each is exactly one index file (`Indizes/<Name>.kwix` in the
+//! library folder); only the active one is ever searched. Which libraries
+//! exist, what they contain and which is active is stored in `bibliotheken.json`
+//! in the library folder – at startup the app loads the active one, however it
+//! was started. New scores (packages, folders, files) are indexed on their own
+//! and merged into the index file ([`merge_into`]); what the library already
+//! has is skipped.
 //!
-//! Beim ersten Start mit dieser Version entsteht „Standard“ aus den alten
-//! Indizes je Paketordner ([`migrate`]), ohne eine Partitur neu zu lesen.
+//! On the first start with this version, "Standard" is built from the old
+//! per-package-folder indexes ([`migrate`]), without re-reading a single score.
 
 use crate::library::{covers, default_root, emit_info, pack_folder, pack_for_folder, pack_name, pack_name_untranslated, pdmx_has_meta};
 use crate::state::{lock, AppState, CmdResult, Library};
@@ -24,10 +24,10 @@ pub const STANDARD: &str = "standard";
 const STANDARD_NAME: &str = "Standard";
 const REGISTRY: &str = "bibliotheken.json";
 const INDEX_DIR: &str = "Indizes";
-/// Index je Paketordner aus der Zeit vor der Bibliotheksliste.
+/// Per-package-folder index from the time before the library list.
 const OLD_INDEX: &str = "klangwelt-bibliothek.kwix";
 
-/// Lesen–Ändern–Schreiben von `bibliotheken.json` nur nacheinander.
+/// Read–modify–write of `bibliotheken.json` only one at a time.
 static REGISTRY_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -35,12 +35,12 @@ static REGISTRY_LOCK: Mutex<()> = Mutex::new(());
 pub struct LibEntry {
     pub id: String,
     pub name: String,
-    /// Indexdatei im Ordner `Indizes`
+    /// Index file in the `Indizes` folder
     pub file: String,
-    /// Enthaltene Pakete aus dem Katalog
+    /// Contained packages from the catalog
     #[serde(default)]
     pub packs: Vec<String>,
-    /// Hinzugefügte Ordner und Dateien (für „Neu indizieren“)
+    /// Added folders and files (for "Re-index")
     #[serde(default)]
     pub paths: Vec<String>,
     #[serde(default)]
@@ -81,7 +81,7 @@ fn write(root: &Path, reg: &Registry) -> Result<(), String> {
     rename_retry(&tmp, &root.join(REGISTRY)).map_err(|e| format!("{REGISTRY}: {e}"))
 }
 
-/// Liste lesen, ändern und speichern (unter der Sperre).
+/// Reads, modifies and saves the list (under the lock).
 fn update<T>(handle: &AppHandle, f: impl FnOnce(&mut Registry) -> Result<T, String>) -> Result<T, String> {
     let _g = REGISTRY_LOCK.lock().map_err(|_| tr!("Library list locked"))?;
     let root = default_root(handle);
@@ -91,10 +91,10 @@ fn update<T>(handle: &AppHandle, f: impl FnOnce(&mut Registry) -> Result<T, Stri
     Ok(out)
 }
 
-/// Umbenennen mit Wiederholung (Windows gibt Dateien manchmal erst kurz danach frei).
+/// Rename with retry (Windows sometimes releases files only shortly afterwards).
 pub(crate) use klang_app::vfs::rename_retry;
 
-/// Leere Indexdatei (eine neue Bibliothek hat immer eine).
+/// Empty index file (a new library always has one).
 fn write_empty(path: &Path) -> Result<(), String> {
     IndexWriter::new(&path.with_extension("kwix-tmp"))
         .and_then(|w| w.finish(path, &AtomicBool::new(false)))
@@ -110,7 +110,7 @@ fn plain_path(s: String) -> String {
     }
 }
 
-/// Dateiname aus einem Bibliotheksnamen (ohne Sonderzeichen).
+/// File name from a library name (without special characters).
 fn slug(name: &str) -> String {
     let mut s = String::new();
     for c in name.chars() {
@@ -135,7 +135,7 @@ fn slug(name: &str) -> String {
     }
 }
 
-/// Kennung und Dateiname für eine neue Bibliothek, die es noch nicht gibt.
+/// Identifier and file name for a new library that does not exist yet.
 fn unique_slug(name: &str, reg: &Registry, dir: &Path) -> String {
     let base = slug(name);
     let mut s = base.clone();
@@ -147,8 +147,8 @@ fn unique_slug(name: &str, reg: &Registry, dir: &Path) -> String {
     s
 }
 
-/// Die andere der beiden Dateien einer Bibliothek (`X.kwix` ↔ `X.neu.kwix`):
-/// dorthin wird verschmolzen, während die aktuelle noch durchsucht wird.
+/// The other of a library's two files (`X.kwix` ↔ `X.neu.kwix`): merging goes
+/// there while the current one is still being searched.
 pub fn other_file(file: &str) -> String {
     match file.strip_suffix(".neu.kwix") {
         Some(stem) => format!("{stem}.kwix"),
@@ -156,7 +156,7 @@ pub fn other_file(file: &str) -> String {
     }
 }
 
-// ---------------------------------------------------------------- Laden
+// ---------------------------------------------------------------- Loading
 
 fn set_status(handle: &AppHandle, f: impl FnOnce(&mut crate::library::LibStatus)) {
     if let Ok(mut s) = handle.state::<AppState>().library_status.lock() {
@@ -177,7 +177,7 @@ fn library_for(handle: &AppHandle, entry: &LibEntry, path: PathBuf, index: AnyIn
     }
 }
 
-/// Lädt die Bibliothek `id` und macht sie zur aktiven (auch in der Liste).
+/// Loads library `id` and makes it the active one (in the list too).
 pub fn activate(handle: &AppHandle, id: &str) -> Result<(), String> {
     let root = default_root(handle);
     let reg = read(&root).ok_or_else(|| tr!("The library list is still missing."))?;
@@ -196,9 +196,9 @@ pub fn activate(handle: &AppHandle, id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Beim Programmstart (im Hintergrund): Bibliotheksliste anlegen bzw. aus den
-/// alten Indizes zusammenstellen, die aktive Bibliothek laden, danach
-/// unterbrochene Aufträge fortsetzen.
+/// At program start (in the background): create the library list or build it
+/// from the old indexes, load the active library, then resume interrupted
+/// jobs.
 pub fn startup(handle: &AppHandle) {
     set_status(handle, |s| s.loading = true);
     let fallback = handle.clone();
@@ -214,7 +214,7 @@ pub fn startup(handle: &AppHandle) {
         }
         if let Some(reg) = read(&root) {
             let result = activate(&handle, &reg.active).or_else(|e| {
-                // die aktive ist kaputt oder fehlt: „Standard“ nehmen
+                // the active one is broken or missing: take "Standard"
                 if reg.active != STANDARD && activate(&handle, STANDARD).is_ok() {
                     Ok(())
                 } else {
@@ -241,7 +241,7 @@ pub fn startup(handle: &AppHandle) {
     }
 }
 
-/// Zahl mit Tausenderpunkten (253.570).
+/// Number with thousands separators (253.570).
 pub fn fmt_de(n: usize) -> String {
     let d = n.to_string();
     let mut out = String::new();
@@ -275,17 +275,17 @@ pub fn fmt_num(n: usize) -> String {
     }
 }
 
-// ---------------------------------------------------------------- Verschmelzen
+// ---------------------------------------------------------------- Merging
 
-/// Setzt eine fertige Indexdatei als neuen Stand der Bibliothek `id` ein: Ist
-/// sie aktiv, wird ab sofort darin gesucht; die alte Datei verschwindet.
-/// `edit` trägt Pakete, Pfade und Zahlen in die Liste ein.
+/// Installs a finished index file as the new state of library `id`: if it is
+/// active, searching switches to it right away; the old file disappears.
+/// `edit` enters packages, paths and counts into the list.
 pub fn install(handle: &AppHandle, id: &str, new_path: &Path, edit: impl FnOnce(&mut LibEntry)) -> Result<(), String> {
     let st = handle.state::<AppState>();
     let root = default_root(handle);
     let dir = index_dir(&root);
     let active_now = lock(&st.library)?.as_ref().is_some_and(|l| l.id == id);
-    // Laden vor dem Sperren (eine große Bibliothek braucht etwa eine Sekunde)
+    // Load before locking (a large library takes about a second)
     let mut fresh = if active_now { Some(AnyIndex::load(new_path).map_err(|e| e.to_string())?) } else { None };
     update(handle, |reg| {
         let entry = reg.get_mut(id).ok_or_else(|| tr!("Library {id} no longer exists", id = id))?;
@@ -300,12 +300,12 @@ pub fn install(handle: &AppHandle, id: &str, new_path: &Path, edit: impl FnOnce(
                 Some(i) => i,
                 None => AnyIndex::load(new_path).map_err(|e| e.to_string())?,
             };
-            // gibt die alte Datei frei
+            // releases the old file
             *lib = Some(library_for(handle, entry, new_path.to_path_buf(), index));
         }
         let mut final_path = new_path.to_path_buf();
         match canonical {
-            // neuer Stand liegt in X.neu.kwix → nach X.kwix (ersetzt die alte)
+            // new state is in X.neu.kwix → move to X.kwix (replaces the old one)
             Some(c) => {
                 let target = dir.join(&c);
                 if rename_retry(new_path, &target).is_ok() {
@@ -314,7 +314,7 @@ pub fn install(handle: &AppHandle, id: &str, new_path: &Path, edit: impl FnOnce(
                     let _ = std::fs::remove_file(&old);
                 }
             }
-            // neuer Stand liegt schon in X.kwix → X.neu.kwix weg
+            // new state is already in X.kwix → remove X.neu.kwix
             None => {
                 if old != final_path {
                     let _ = std::fs::remove_file(&old);
@@ -329,10 +329,9 @@ pub fn install(handle: &AppHandle, id: &str, new_path: &Path, edit: impl FnOnce(
     })
 }
 
-/// Verschmilzt den Index `new` mit der Bibliothek `id` (Partituren, die sie
-/// schon hat, werden übersprungen), vermerkt Pakete und Pfade und setzt das
-/// Ergebnis ein. Läuft im Hintergrund-Thread eines Auftrags; `library_cancel`
-/// bricht ab, ohne etwas zu ändern.
+/// Merges the index `new` into library `id` (scores it already has are
+/// skipped), records packages and paths and installs the result. Runs on a
+/// job's background thread; `library_cancel` aborts without changing anything.
 pub fn merge_into(handle: &AppHandle, id: &str, new: &Path, packs: &[String], paths: &[String]) -> Result<MergeStats, String> {
     let st = handle.state::<AppState>();
     let root = default_root(handle);
@@ -384,9 +383,9 @@ pub fn merge_into(handle: &AppHandle, id: &str, new: &Path, packs: &[String], pa
     Ok(stats)
 }
 
-// ---------------------------------------------------------------- Verwalten
+// ---------------------------------------------------------------- Managing
 
-/// Eine Bibliothek für die Oberfläche und den Agenten.
+/// A library for the UI and the agent.
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct LibView {
@@ -394,12 +393,12 @@ pub struct LibView {
     name: String,
     scores: usize,
     voices: usize,
-    /// Namen der enthaltenen Pakete
+    /// Names of the contained packages
     packs: Vec<String>,
     paths: Vec<String>,
     active: bool,
     standard: bool,
-    /// Größe der Indexdatei
+    /// Size of the index file
     bytes: u64,
 }
 
@@ -423,7 +422,7 @@ pub fn list(handle: &AppHandle) -> Vec<LibView> {
         .collect()
 }
 
-/// Kennung zu einer Angabe des Agenten (Kennung oder Name).
+/// Identifier for an agent's specification (identifier or name).
 pub fn resolve(handle: &AppHandle, key: &str) -> Result<String, String> {
     let reg = read(&default_root(handle)).ok_or_else(|| tr!("The library list is still missing."))?;
     let key = key.trim();
@@ -447,7 +446,7 @@ fn busy_text(st: &AppState) -> Option<String> {
         .then(|| tr!("Downloading, indexing or adding is in progress – please wait or cancel."))
 }
 
-/// Legt eine leere Bibliothek an (wird nicht aktiv).
+/// Creates an empty library (does not become active).
 pub fn create(handle: &AppHandle, name: &str) -> Result<LibEntry, String> {
     let name = name.trim();
     if name.is_empty() {
@@ -487,8 +486,8 @@ pub fn rename(handle: &AppHandle, id: &str, name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Löscht eine Bibliothek: nur ihre Indexdatei, nie Partituren. „Standard“
-/// bleibt; war sie aktiv, wird „Standard“ aktiv.
+/// Deletes a library: only its index file, never scores. "Standard" stays; if
+/// it was active, "Standard" becomes active.
 pub fn delete(handle: &AppHandle, id: &str) -> Result<(), String> {
     if id == STANDARD {
         return Err(tr!("The \"Standard\" library can't be deleted."));
@@ -513,16 +512,16 @@ pub fn delete(handle: &AppHandle, id: &str) -> Result<(), String> {
     Ok(())
 }
 
-// ---------------------------------------------------------------- Umzug
+// ---------------------------------------------------------------- Migration
 
-/// Erster Start mit Bibliotheksliste: „Standard“ aus den alten Indizes je
-/// Paketordner verschmelzen (Doppelte einmal). Ist die volle PDMX dabei,
-/// werden Kostprobe und Auswahl (ihre Teilmengen) eigene Bibliotheken. Die
-/// alten Indexdateien verschwinden danach. Liefert die Meldung dazu.
+/// First start with a library list: merge "Standard" from the old per-package-
+/// folder indexes (duplicates once). If the full PDMX is included, the sample
+/// and selection (its subsets) become libraries of their own. The old index
+/// files disappear afterwards. Returns the message for it.
 fn migrate(handle: &AppHandle, root: &Path) -> Result<String, String> {
     let dir = index_dir(root);
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    // (Ordner, Indexdatei, Größe, Paket)
+    // (folder, index file, size, package)
     let mut found: Vec<(PathBuf, PathBuf, u64, Option<&'static str>)> = Vec::new();
     if let Ok(rd) = std::fs::read_dir(root) {
         for e in rd.flatten() {
@@ -539,7 +538,7 @@ fn migrate(handle: &AppHandle, root: &Path) -> Result<String, String> {
     let (own, mut rest): (Vec<_>, Vec<_>) = found.into_iter().partition(|f| full_pdmx && f.3.is_some_and(|p| p != "pdmx-voll" && covers("pdmx-voll", p)));
     let mut reg = Registry { active: STANDARD.into(), libraries: Vec::new() };
 
-    // Teilmengen der vollen PDMX als eigene Bibliotheken (Datei nur verschieben)
+    // Subsets of the full PDMX as libraries of their own (only move the file)
     for (_, idx, _, pack) in &own {
         let pack = pack.unwrap_or_default();
         // untranslated: the saved name and the id must not depend on the language
@@ -548,7 +547,7 @@ fn migrate(handle: &AppHandle, root: &Path) -> Result<String, String> {
         let file = format!("{s}.kwix");
         let target = dir.join(&file);
         let moved = if extra_path(idx).is_file() {
-            // mit Zusatz: beides zu einer Datei
+            // with addition: both into one file
             let index = AnyIndex::load(idx).map_err(|e| e.to_string())?;
             merge(&[&index], &target, true, &|_| {}, &AtomicBool::new(false)).map(|_| ()).map_err(|e| e.to_string())
         } else {
@@ -569,7 +568,7 @@ fn migrate(handle: &AppHandle, root: &Path) -> Result<String, String> {
         });
     }
 
-    // Standard: alles andere, das Größte zuerst (wird fast unverändert kopiert)
+    // Standard: everything else, largest first (copied almost unchanged)
     rest.sort_by(|a, b| b.2.cmp(&a.2));
     let target = dir.join(format!("{STANDARD_NAME}.kwix"));
     let mut standard = LibEntry { id: STANDARD.into(), name: STANDARD_NAME.into(), file: format!("{STANDARD_NAME}.kwix"), ..Default::default() };
@@ -588,7 +587,7 @@ fn migrate(handle: &AppHandle, root: &Path) -> Result<String, String> {
                     Some(p) => standard.packs.push(p.to_string()),
                     None => standard.paths.push(f.0.display().to_string()),
                 }
-                // (alte Zusatzdateien speicherten Pfade mit \\?\ davor)
+                // (old addition files stored paths with \\?\ in front)
                 standard.paths.extend(index.extra_sources().into_iter().map(plain_path));
             }
             let refs: Vec<&AnyIndex> = loaded.iter().collect();
@@ -606,7 +605,7 @@ fn migrate(handle: &AppHandle, root: &Path) -> Result<String, String> {
         standard.scores = stats.scores as usize;
         standard.voices = stats.docs as usize;
     }
-    // eigene Ordner nur einmal, Dateien darin nicht zusätzlich
+    // own folders only once, files inside them not additionally
     let folders: Vec<String> = standard.paths.iter().filter(|p| Path::new(p).is_dir()).cloned().collect();
     standard.paths.retain(|p| Path::new(p).is_dir() || !folders.iter().any(|f| Path::new(p).starts_with(f)));
     standard.paths.dedup();
@@ -651,7 +650,7 @@ fn migrate(handle: &AppHandle, root: &Path) -> Result<String, String> {
         let _g = REGISTRY_LOCK.lock().map_err(|_| tr!("Library list locked"))?;
         write(root, &reg)?;
     }
-    // alte Indizes (jetzt in „Standard“) entfernen
+    // remove old indexes (now in "Standard")
     for (_, idx, _, _) in &rest {
         let _ = std::fs::remove_file(extra_path(idx));
         let _ = std::fs::remove_file(idx);
@@ -659,7 +658,7 @@ fn migrate(handle: &AppHandle, root: &Path) -> Result<String, String> {
     Ok(summary)
 }
 
-// ---------------------------------------------------------------- Befehle
+// ---------------------------------------------------------------- Commands
 
 #[tauri::command]
 pub async fn library_list(app: AppHandle) -> CmdResult<Vec<LibView>> {
@@ -701,7 +700,7 @@ pub async fn library_delete(app: AppHandle, id: String) -> CmdResult<Vec<LibView
     Ok(list(&app))
 }
 
-/// Pfad, unter dem ein Paket liegt (Standardordner im Bibliotheksordner).
+/// Path under which a package lives (default folder in the library folder).
 pub fn pack_dir(handle: &AppHandle, pack: &str) -> Option<PathBuf> {
     pack_folder(pack).map(|f| default_root(handle).join(f))
 }

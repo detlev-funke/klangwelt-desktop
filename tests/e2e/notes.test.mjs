@@ -1,6 +1,6 @@
-// Noten in der Zeitleiste: auswählen, Rahmen, verschieben (mit Takteinteilung),
-// Alt+Klick setzt Noten – auch neben dem Clip (der Clip wächst), Länge, Löschen
-// (Entf oder Rechtsklick → Menü).
+// Notes in the timeline: select, frame, move (with bar grid),
+// Alt+click places notes – also next to the clip (the clip grows), length, delete
+// (Delete or right-click → menu).
 import { before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { startApp, makeTest, noteGeo, geoFns, MOD } from "./harness.mjs";
@@ -18,8 +18,8 @@ let trackId;
 let g; // { X, Y }
 
 /**
- * Spur „Test“ in Notenansicht mit einem Clip ab Takt 2 (Schlag 4), 1 Takt lang:
- * 60@0, 64@1, 67@2 (je 0,9 Schläge). Ansicht: 80 px je Schlag, Spur oben.
+ * Track "Test" in note view with one clip from bar 2 (beat 4), 1 bar long:
+ * 60@0, 64@1, 67@2 (0.9 beats each). View: 80 px per beat, track at the top.
  */
 beforeEach(async () => {
   await app.reset();
@@ -44,13 +44,13 @@ const clip = () => app.eval((id) => {
 const sel = () => app.eval(() => (T.pr.noteSel.peek()?.keys ?? []).slice().sort());
 const undoLabel = () => app.eval(() => T.st.snapshot.peek().undoLabel);
 
-test("Klick auf freie Bahn setzt keine Note mehr", async () => {
+test("click on an empty lane no longer places a note", async () => {
   await app.click(g.X(4 + 0.5), g.Y(62));
   assert.deepEqual((await clip()).notes, ["60@0", "64@1", "67@2"]);
   assert.deepEqual(await sel(), []);
 });
 
-test("Klick wählt eine Note, Umschalt/Strg+Klick nimmt dazu und wieder heraus", async () => {
+test("click selects a note, Shift/Ctrl+click adds and removes", async () => {
   await app.click(g.X(4.3), g.Y(60));
   assert.deepEqual(await sel(), ["60@0"]);
   await app.click(g.X(5.3), g.Y(64), { mods: MOD.ctrl });
@@ -61,17 +61,17 @@ test("Klick wählt eine Note, Umschalt/Strg+Klick nimmt dazu und wieder heraus",
   assert.deepEqual(await sel(), ["64@1", "67@2"]);
 });
 
-test("Auswahlrahmen wählt die Noten darin, Strg nimmt dazu", async () => {
+test("selection box selects the notes inside, Ctrl adds", async () => {
   await app.drag([g.X(4.1), g.Y(65)], [g.X(5.95), g.Y(58)]);
   assert.deepEqual(await sel(), ["60@0", "64@1"]);
   await app.drag([g.X(6.1), g.Y(68)], [g.X(6.95), g.Y(66)], { mods: MOD.ctrl });
   assert.deepEqual(await sel(), ["60@0", "64@1", "67@2"]);
-  // Rahmen ohne Taste ersetzt die Auswahl
+  // frame without a key replaces the selection
   await app.drag([g.X(6.1), g.Y(68)], [g.X(6.95), g.Y(66)]);
   assert.deepEqual(await sel(), ["67@2"]);
 });
 
-test("Gewählte Noten verschieben: alle zusammen, mit Positionsanzeige", async () => {
+test("moving selected notes: all together, with position display", async () => {
   await app.drag([g.X(4.1), g.Y(65)], [g.X(5.95), g.Y(58)]); // 60@0, 64@1
   const up = await app.eval(() => T.pr.highOnTop.peek());
   const laneH = (await noteGeo(app, trackId)).laneH;
@@ -84,7 +84,7 @@ test("Gewählte Noten verschieben: alle zusammen, mit Positionsanzeige", async (
   assert.equal(await app.eval(() => T.$("kw-timeline").dataset.dragInfo ?? null), null, "Anzeige verschwindet");
 });
 
-test("Alt+Ziehen setzt eine Note im Clip – sie endet am Zeiger", async () => {
+test("Alt+drag places a note in the clip – it ends at the pointer", async () => {
   await app.drag([g.X(4 + 3.05), g.Y(62)], [g.X(4 + 3.5), g.Y(62)], { mods: MOD.alt });
   const c = await clip();
   assert.ok(c.notes.includes("62@3"), JSON.stringify(c.notes));
@@ -92,35 +92,35 @@ test("Alt+Ziehen setzt eine Note im Clip – sie endet am Zeiger", async () => {
   assert.equal(len, 0.5, "Ende am Zeiger (Raster ¼)");
 });
 
-test("Alt+Klick ohne Ziehen: Note mit der zuletzt gesetzten Länge", async () => {
+test("Alt+click without dragging: note with the last used length", async () => {
   await app.click(g.X(4 + 3.05), g.Y(62), { mods: MOD.alt });
   assert.ok((await clip()).notes.includes("62@3"));
 });
 
-test("Alt+Klick hinter dem Clip: Note kommt hinein, der Clip wächst nach rechts", async () => {
-  await app.click(g.X(9.05), g.Y(65), { mods: MOD.alt }); // Clip endet bei Schlag 8
+test("Alt+click after the clip: note goes in, the clip grows to the right", async () => {
+  await app.click(g.X(9.05), g.Y(65), { mods: MOD.alt }); // clip ends at beat 8
   const c = await clip();
   assert.equal(c.start, 4);
   assert.equal(c.len, 8, "auf ganze Takte erweitert");
   assert.ok(c.notes.includes("65@5"), JSON.stringify(c.notes));
-  // ein Undo-Schritt nimmt alles zurück
+  // one undo step takes everything back
   await app.eval(() => T.st.act(window.__TAURI__.core.invoke("undo")));
   assert.deepEqual(await clip(), { start: 4, len: 4, notes: ["60@0", "64@1", "67@2"] });
 });
 
-test("Alt+Klick vor dem Clip: der Clip wächst nach links, die Noten bleiben an ihrem Platz", async () => {
+test("Alt+click before the clip: the clip grows to the left, the notes stay in place", async () => {
   await app.click(g.X(2.05), g.Y(62), { mods: MOD.alt });
   const c = await clip();
   assert.equal(c.start, 0, "Clip beginnt einen Takt früher");
   assert.equal(c.len, 8);
-  // alte Noten rücken im Clip um 4 Schläge – im Projekt bleiben sie stehen
+  // old notes move by 4 beats within the clip – in the project they stay put
   assert.deepEqual(c.notes, ["60@4", "62@2", "64@5", "67@6"]);
   assert.match(await undoLabel(), /Clip nach links erweitert/);
   await app.eval(() => T.st.act(window.__TAURI__.core.invoke("undo")));
   assert.deepEqual(await clip(), { start: 4, len: 4, notes: ["60@0", "64@1", "67@2"] });
 });
 
-test("Noten über den Clipanfang hinaus verschieben erweitert den Clip", async () => {
+test("moving notes past the clip start extends the clip", async () => {
   await app.click(g.X(4.3), g.Y(60));
   await app.drag([g.X(4.3), g.Y(60)], [g.X(3.3), g.Y(60)]);
   const c = await clip();
@@ -128,7 +128,7 @@ test("Noten über den Clipanfang hinaus verschieben erweitert den Clip", async (
   assert.deepEqual(c.notes, ["60@3", "64@5", "67@6"]);
 });
 
-test("Alt+Klick in einer Spur ohne Clip legt einen Clip an", async () => {
+test("Alt+click in a track without a clip creates a clip", async () => {
   const id = await app.eval(async () => {
     await T.st.run({ type: "addTrack", track: { id: 0, name: "Leer", kind: "instrument" } });
     const t = T.st.snapshot.peek().project.tracks.at(-1);
@@ -144,13 +144,13 @@ test("Alt+Klick in einer Spur ohne Clip legt einen Clip an", async () => {
   assert.equal(c[0].notes[0], 1);
 });
 
-test("Rechte Kante ziehen ändert die Länge", async () => {
+test("dragging the right edge changes the length", async () => {
   await app.drag([g.X(4.86), g.Y(60)], [g.X(5.95), g.Y(60)]);
   const len = await app.eval((id) => T.st.snapshot.peek().project.tracks.find((t) => t.id === id).clips[0].source.notes.find((n) => n.pitch === 60).lengthBeats, trackId);
   assert.ok(Math.abs(len - 2) < 0.26, `Länge ${len}`);
 });
 
-test("Entf löscht die Auswahl, Pfeiltasten transponieren, Rechtsklick öffnet das Menü mit „Löschen“", async () => {
+test("Delete deletes the selection, arrow keys transpose, right-click opens the menu with “Delete”", async () => {
   await app.click(g.X(5.3), g.Y(64));
   await app.key("ArrowUp");
   assert.ok((await clip()).notes.includes("65@1"));
@@ -163,13 +163,13 @@ test("Entf löscht die Auswahl, Pfeiltasten transponieren, Rechtsklick öffnet d
   assert.deepEqual((await clip()).notes, ["60@0"]);
 });
 
-test("Clip verschieben zeigt Takteinteilung und Position", async () => {
-  const band = (await noteGeo(app, trackId)).rowY + 8; // Kopfzeile des Clips
+test("moving a clip shows the bar division and position", async () => {
+  const band = (await noteGeo(app, trackId)).rowY + 8; // header row of the clip
   const info = await app.drag([g.X(4.5), band], [g.X(8.5), band], { during: () => app.eval(() => T.$("kw-timeline").dataset.dragInfo ?? null) });
   assert.match(info ?? "", /^Takt 3\.1\.1 +\+1 Takt$/, `Anzeige: ${info}`);
   assert.equal((await clip()).start, 8);
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });

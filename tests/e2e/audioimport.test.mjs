@@ -1,10 +1,10 @@
-// Audiodateien per Drag & Drop als Spuren einfügen (Stelle unter der Maus,
-// in eine Audiospur oder als neue Spuren), Formate prüfen und sauber melden,
-// Aufnahmen in eine Melodie- oder Rhythmus-Spur umwandeln (Knopf am Clip,
-// Knopf im Spurkopf der Tonhöhen-Ansicht, Kontextmenü, Agent).
+// Insert audio files as tracks via drag & drop (position under the mouse, into
+// an audio track or as new tracks), check formats and report them cleanly,
+// convert recordings into a melody or rhythm track (button on the clip,
+// button in the track header of the pitch view, context menu, agent).
 //
-// Das Ablegen selbst meldet Tauri als Ereignis „tauri://drag-drop“ (Pfade und
-// Stelle in physischen Pixeln); der Test löst dasselbe Ereignis aus.
+// The drop itself is reported by Tauri as the event "tauri://drag-drop" (paths
+// and position in physical pixels); the test fires the same event.
 import { before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
@@ -19,11 +19,11 @@ before(async () => {
   app = await startApp();
   const sr = 22_050;
   files.melody = join(app.tmp, "Melodie gesungen.wav");
-  // c' e' g' c'' – je 0,5 s (bei 120 BPM je ein Schlag), 24 Bit Stereo (rechts leiser)
+  // c' e' g' c'' – 0.5 s each (one beat each at 120 BPM), 24-bit stereo (right quieter)
   const m = sing([[60, 0.5], [64, 0.5], [67, 0.5], [72, 0.5]], sr);
   writeWav(files.melody, [m, m.map((v) => v * 0.5)], sr, 24);
   files.beat = join(app.tmp, "Beat.wav");
-  // zwei Takte: Bassdrum auf 1 und 3, Snare auf 2 und 4, Hi-Hat auf den Achteln dazwischen
+  // two bars: bass drum on 1 and 3, snare on 2 and 4, hi-hat on the eighths in between
   const pattern = { kick: [0, 8, 16, 24], snare: [4, 12, 20, 28], hat: [2, 6, 10, 14, 18, 22, 26, 30] };
   writeWav(files.beat, [drums(pattern, 32, 120, 44_100)], 44_100);
   files.short = join(app.tmp, "kurz.wav");
@@ -50,7 +50,7 @@ const message = () => app.eval(() => T.st.message.peek()?.text ?? "");
 const undoLabel = () => app.eval(() => T.st.snapshot.peek().undoLabel);
 const undo = () => app.eval(() => T.st.act(window.__TAURI__.core.invoke("undo")));
 
-/** Stelle über der Zeitleiste: Schlag und y (Fensterpixel). */
+/** Position above the timeline: beat and y (window pixels). */
 async function timelineAt(beat, y) {
   return app.eval((beat, y) => {
     const c = T.$("kw-timeline canvas").getBoundingClientRect();
@@ -59,7 +59,7 @@ async function timelineAt(beat, y) {
   }, beat, y);
 }
 
-/** Ziehen und Ablegen wie Tauri: Ereignisse hereinziehen, darüber, ablegen. */
+/** Drag and drop like Tauri: events for dragging in, over, dropping. */
 async function drop(paths, at, { during } = {}) {
   await app.eval((paths, at) => window.__TAURI__.event.emit("tauri://drag-enter", { paths, position: at }), paths, at);
   await app.eval((at) => window.__TAURI__.event.emit("tauri://drag-over", { position: at }), at);
@@ -73,7 +73,7 @@ async function waitTracks(n) {
   await app.waitFor((n) => T.st.snapshot.peek().project.tracks.length === n, { what: `${n} Spuren`, timeout: 15000 }, n);
 }
 
-/** Audio einfügen ohne Ziehen (für die Umwandel-Tests). */
+/** Insert audio without dragging (for the conversion tests). */
 async function importFile(path, startBeats = 0) {
   const r = await app.eval((p, s) => window.__TAURI__.core.invoke("audio_import", { paths: [p], trackId: null, startBeats: s }), path, startBeats);
   await app.eval((s) => (T.st.snapshot.value = s), r.snapshot);
@@ -81,9 +81,9 @@ async function importFile(path, startBeats = 0) {
   return r.imported[0];
 }
 
-// ------------------------------------------------------------------ Einfügen
+// ------------------------------------------------------------------ Inserting
 
-test("Audiodatei auf die leere Zeitleiste ziehen: neue Audiospur mit Clip ab der Mausposition, Anzeige beim Ziehen", async () => {
+test("dragging an audio file onto the empty timeline: new audio track with clip from the mouse position, indicator while dragging", async () => {
   const at = await timelineAt(4.1);
   const info = await drop([files.melody], at, { during: () => app.eval(() => T.$("kw-timeline").dataset.dropInfo ?? null) });
   assert.equal(info, "Audiodatei → Takt 2.1.1 · neue Spur");
@@ -106,7 +106,7 @@ test("Audiodatei auf die leere Zeitleiste ziehen: neue Audiospur mit Clip ab der
   assert.equal((await project()).tracks.length, 0, "ein Rückgängig-Schritt");
 });
 
-test("Auf eine Audiospur gezogen: Clip kommt in diese Spur; mehrere Dateien: je eine eigene Spur darunter", async () => {
+test("dropped onto an audio track: clip goes into that track; several files: one track each below", async () => {
   await importFile(files.short, 0);
   const id = (await project()).tracks[0].id;
   const g = await noteGeo(app, id);
@@ -115,7 +115,7 @@ test("Auf eine Audiospur gezogen: Clip kommt in diese Spur; mehrere Dateien: je 
   assert.equal(info, "Audiodatei → Takt 3.1.1 · in „kurz“");
   await app.waitFor((id) => T.st.snapshot.peek().project.tracks.find((t) => t.id === id).clips.length === 2, { what: "zweiter Clip" }, id);
   assert.equal((await project()).tracks.length, 1, "keine neue Spur");
-  // zwei Dateien auf dieselbe Spur: die erste hinein, die zweite als neue Spur direkt darunter
+  // two files onto the same track: the first goes in, the second as a new track directly below
   await drop([files.short, files.beat], await timelineAt(12, g.rowY + 40));
   await waitTracks(2);
   const p = await project();
@@ -124,7 +124,7 @@ test("Auf eine Audiospur gezogen: Clip kommt in diese Spur; mehrere Dateien: je 
   assert.equal(await undoLabel(), "2 Audiodateien einfügen");
 });
 
-test("Auf einen Spurkopf gezogen: in diese Spur ab Anfang; über die Instrumentspur: neue Spur darunter", async () => {
+test("dropped onto a track header: into that track from the start; over the instrument track: new track below", async () => {
   await app.eval(() => T.st.run({ type: "addTrack", track: { id: 0, name: "Klavier", kind: "instrument" } }));
   await importFile(files.short, 0);
   await app.eval(() => T.sleep(200));
@@ -133,18 +133,18 @@ test("Auf einen Spurkopf gezogen: in diese Spur ab Anfang; über die Instruments
     return rows.map((r) => { const b = r.getBoundingClientRect(); return { x: b.x + 30, y: b.y + b.height / 2, id: Number(r.dataset.trackId) }; });
   });
   assert.equal(head.length, 2);
-  // auf den Kopf der Audiospur
+  // onto the header of the audio track
   await drop([files.melody], { x: head[1].x, y: head[1].y });
   await app.waitFor((id) => T.st.snapshot.peek().project.tracks.find((t) => t.id === id).clips.length === 2, { what: "Clip in der Audiospur" }, head[1].id);
   const c = (await project()).tracks[1].clips.find((c) => c.name === "Melodie gesungen");
   assert.equal(c.startBeats, 0);
-  // auf den Kopf der Instrumentspur → neue Audiospur direkt darunter
+  // onto the header of the instrument track → new audio track directly below
   await drop([files.beat], { x: head[0].x, y: head[0].y });
   await waitTracks(3);
   assert.deepEqual((await project()).tracks.map((t) => t.name), ["Klavier", "Beat", "kurz"]);
 });
 
-test("MP3 und andere Dateien werden sauber gemeldet; mit offener Bibliothek wird Audio trotzdem eingefügt", async () => {
+test("MP3 and other files are reported cleanly; with the library open, audio is still inserted", async () => {
   await drop([files.mp3], await timelineAt(0));
   await app.waitFor(() => /MP3 kann Klangwelt noch nicht lesen/.test(T.st.message.peek()?.text ?? ""), { what: "Meldung zu MP3" });
   assert.match(await message(), /„Lied\.mp3“: MP3 kann Klangwelt noch nicht lesen – unterstützt sind WAV, AIFF, FLAC und Opus/);
@@ -152,11 +152,11 @@ test("MP3 und andere Dateien werden sauber gemeldet; mit offener Bibliothek wird
   assert.equal((await project()).tracks.length, 0);
   await drop([files.text], await timelineAt(0));
   await app.waitFor(() => /kann Klangwelt nicht einfügen/.test(T.st.message.peek()?.text ?? ""), { what: "Meldung zu Textdatei" });
-  // gemischt: lesbare Datei kommt, die andere wird genannt
+  // mixed: the readable file comes in, the other one is named
   await drop([files.short, files.mp3], await timelineAt(0));
   await waitTracks(1);
   await app.waitFor(() => /nicht gelesen: „Lied\.mp3“: MP3/.test(T.st.message.peek()?.text ?? ""), { what: "Teil-Meldung" });
-  // Bibliothek offen (eigenes Fenster neben den Spuren): Audio geht trotzdem in die Zeitleiste, kein Bibliotheksfehler
+  // Library open (own window next to the tracks): audio still goes into the timeline, no library error
   await app.eval(() => T.st.showPanel("bibliothek"));
   await app.eval(() => T.sleep(300));
   await app.eval(() => T.st.showPanel("spuren"));
@@ -165,9 +165,9 @@ test("MP3 und andere Dateien werden sauber gemeldet; mit offener Bibliothek wird
   assert.doesNotMatch(await message(), /MusicXML/);
 });
 
-// ------------------------------------------------------------------ Umwandeln
+// ------------------------------------------------------------------ Converting
 
-test("Knopf „♪ → Noten“ am Audio-Clip: Melodie-Spur direkt darunter mit den gesungenen Tönen", async () => {
+test("button “♪ → Notes” on the audio clip: melody track directly below with the sung notes", async () => {
   await app.eval(() => T.st.run({ type: "addTrack", track: { id: 0, name: "Oben", kind: "instrument" } }));
   const imp = await importFile(files.melody, 4);
   await app.eval(() => T.st.run({ type: "addTrack", track: { id: 0, name: "Unten", kind: "instrument" } }));
@@ -188,11 +188,11 @@ test("Knopf „♪ → Noten“ am Audio-Clip: Melodie-Spur direkt darunter mit 
   assert.equal((await project()).tracks.length, 3);
 });
 
-test("Tonhöhen-Ansicht: Knopf „Noten“ im Spurkopf wandelt alle Audio-Clips der Spur um", async () => {
+test("pitch view: button “Notes” in the track header converts all audio clips of the track", async () => {
   const imp = await importFile(files.melody, 0);
-  // zweiter Clip derselben Aufnahme weiter hinten in derselben Spur
+  // second clip of the same recording further back in the same track
   await app.eval((p, tid) => window.__TAURI__.core.invoke("audio_import", { paths: [p], trackId: tid, startBeats: 8 }).then((r) => (T.st.snapshot.value = r.snapshot)), files.melody, imp.trackId);
-  // sichtbar = belegt Platz (nicht nur das hidden-Attribut prüfen)
+  // visible = takes up space (don't just check the hidden attribute)
   const shown = (sel = ".toggle.convert") => app.eval((sel) => T.$$(`.track-row ${sel}`).map((b) => b.getBoundingClientRect().width > 0), sel);
   assert.deepEqual(await shown(), [false], "kompakt: kein Knopf");
   assert.deepEqual(await shown(".toggle.v.x"), [false], "Audiospur: kein Knopf für die Ausdrucksspur");
@@ -201,16 +201,16 @@ test("Tonhöhen-Ansicht: Knopf „Noten“ im Spurkopf wandelt alle Audio-Clips 
   await app.clickOn(".track-row .toggle.convert");
   await app.waitFor(() => T.st.snapshot.peek().project.tracks.length === 2, { what: "Melodie-Spur", timeout: 20000 });
   assert.deepEqual(await shown(), [true, false], "die neue Instrumentspur hat keinen Umwandeln-Knopf");
-  // Ausdrucksspur-Knopf nur bei der Instrumentspur in der Notenansicht
+  // expression track button only on the instrument track in the score view
   assert.deepEqual(await shown(".toggle.v.x"), [false, true]);
   const mel = (await project()).tracks[1];
   assert.equal(mel.name, "Melodie aus Melodie gesungen");
   assert.deepEqual(mel.clips.map((c) => c.startBeats), [0, 8], "ein Clip je Audio-Clip");
-  // im Notenband der Tonhöhen-Ansicht trägt der Clip den Knopf ebenfalls
+  // in the score band of the pitch view the clip carries the button as well
   assert.ok(await app.eval((id) => !!T.$("kw-timeline").noteButtonRect(id), imp.clipId));
 });
 
-test("Kontextmenü am Audio-Clip: In Rhythmus-Spur umwandeln – Bassdrum, Snare und Hi-Hat an ihren Stellen", async () => {
+test("context menu on the audio clip: convert to rhythm track – bass drum, snare and hi-hat in their places", async () => {
   const imp = await importFile(files.beat, 0);
   const g = await noteGeo(app, imp.trackId);
   await app.click(g.cx + 1.3 * g.ppb - g.scrollX, g.rowY + 50, { button: "right" });
@@ -231,7 +231,7 @@ test("Kontextmenü am Audio-Clip: In Rhythmus-Spur umwandeln – Bassdrum, Snare
   assert.equal(await undoLabel(), "In Rhythmus-Spur umwandeln");
 });
 
-test("Clip-Fenster eines Audio-Clips: „Rhythmus → Schlagzeug“", async () => {
+test("clip window of an audio clip: “Rhythm → drums”", async () => {
   const imp = await importFile(files.beat, 0);
   await app.eval((sel) => {
     T.st.selection.value = sel;
@@ -244,7 +244,7 @@ test("Clip-Fenster eines Audio-Clips: „Rhythmus → Schlagzeug“", async () =
   await app.eval(() => T.st.showPanel("spuren"));
 });
 
-test("Agent: import_audio und audio_to_notes", async () => {
+test("agent: import_audio and audio_to_notes", async () => {
   const r = await app.mcp("import_audio", { paths: [files.beat, files.mp3], startBeats: 4 });
   assert.equal(r.eingefuegt.length, 1);
   assert.equal(r.eingefuegt[0].format, "WAV 16 Bit");
@@ -256,6 +256,6 @@ test("Agent: import_audio und audio_to_notes", async () => {
   assert.equal((await project()).tracks[1].clips[0].startBeats, 4);
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });

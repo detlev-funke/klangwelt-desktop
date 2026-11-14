@@ -1,7 +1,7 @@
-// Harmonie in der Zeitleiste und im Quintenzirkel: Akkordfolge des Satzes mit
-// Stimmung und Brüchen (Band im Lineal, umschaltbar, erscheint bei Arbeit im
-// Harmonie-Fenster), der Verlauf folgt der Abspielposition, neue Akkorde
-// werden eingefügt (alles danach rückt nach hinten) oder ersetzen das Nachfolgende.
+// Harmony in the timeline and the circle of fifths: chord progression of the piece with
+// key and breaks (band in the ruler, can be toggled, appears when working in the
+// Harmony window), the progression follows the playhead, new chords
+// are inserted (everything after them moves back) or replace what follows.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startApp, makeTest, sleep } from "./harness.mjs";
@@ -29,7 +29,7 @@ const chordStarts = () => app.eval(() => {
   return [...new Set(t.clips.flatMap((c) => c.source.notes.map((n) => c.startBeats + n.startBeats)))].sort((a, b) => a - b);
 });
 
-/** Satz: C – a – Fis – G7 – C (je ein Takt) und eine Melodienote auf dem letzten C. */
+/** Piece: C – a – F# – G7 – C (one bar each) and a melody note on the last C. */
 async function setup() {
   await app.reset();
   await app.mcp("write_chords", { chords: ["C", "a", "Fis", "G7", "C"], key: "C-Dur", beatsPerChord: 4 });
@@ -43,7 +43,7 @@ async function setup() {
   await app.waitFor(() => T.hl.harmonyLine.peek()?.chords.length >= 5 && T.hl.harmonyLine.peek().key.name === "C-Dur", { what: "Akkordfolge erkannt", timeout: 8000 });
 }
 
-test("Akkordfolge mit Stimmung und Bruch; Band in der Zeitleiste umschaltbar, Erklärung beim Zeigen", async () => {
+test("chord progression with mood and break; band in the timeline toggleable, explanation on hover", async () => {
   await setup();
   const line = await app.eval(() => T.hl.harmonyLine.peek().chords.map((c) => [c.name, c.mood, c.bruch]));
   const names = line.map((c) => c[0]);
@@ -52,14 +52,14 @@ test("Akkordfolge mit Stimmung und Bruch; Band in der Zeitleiste umschaltbar, Er
   assert.equal(line[3][1], "spannend");
   assert.equal(line[4][1], "loesend");
   assert.ok(line.filter((c) => c[2]).length === 1, "nur ein Bruch");
-  // Band an
+  // Band on
   await app.mouse("mouseMoved", 5, 5);
   await app.waitFor(() => !T.hl.harmonyFocus.peek(), { what: "kein Fokus", timeout: 3000 });
   assert.equal(await app.eval(() => T.$(".harmony-toggle").classList.contains("on")), false);
   await app.clickOn(".harmony-toggle");
   assert.equal(await app.eval(() => T.hl.harmonyLaneOn.peek() && localStorage.getItem("klangwelt.harmonie.zeitleiste")), "an");
   assert.equal(await app.eval(() => T.$(".harmony-toggle").classList.contains("on")), true);
-  // Erklärung im Band über dem Fis
+  // Explanation in the band above the F#
   const [x, y] = await app.eval(() => {
     const v = T.st.viewport.peek();
     const c = T.$("kw-timeline canvas").getBoundingClientRect();
@@ -70,7 +70,7 @@ test("Akkordfolge mit Stimmung und Bruch; Band in der Zeitleiste umschaltbar, Er
   const tip = await app.eval(() => T.$("kw-timeline canvas").title);
   assert.match(tip, /^Fis ·/, tip);
   assert.match(tip, /Harmonischer Bruch: tonartfremd/, tip);
-  // Bruch rot im Lineal gezeichnet
+  // Break drawn in red in the ruler
   const red = await app.eval((x) => {
     const cv = T.$("kw-timeline canvas");
     const r = cv.getBoundingClientRect();
@@ -83,7 +83,7 @@ test("Akkordfolge mit Stimmung und Bruch; Band in der Zeitleiste umschaltbar, Er
   assert.equal(await app.eval(() => T.hl.harmonyLaneOn.peek()), false);
 });
 
-test("Arbeit im Harmonie-Fenster blendet das Band ein, Verlassen wieder aus", async () => {
+test("working in the harmony window shows the band, leaving hides it again", async () => {
   const c = await app.center("kw-panel[tab='harmonie'] .hc-circle");
   await app.mouse("mouseMoved", c.x, c.y);
   await app.waitFor(() => T.hl.harmonyFocus.peek(), { what: "Fokus im Harmonie-Fenster" });
@@ -91,14 +91,14 @@ test("Arbeit im Harmonie-Fenster blendet das Band ein, Verlassen wieder aus", as
   await app.waitFor(() => !T.hl.harmonyFocus.peek(), { what: "Fokus weg", timeout: 3000 });
 });
 
-test("Der Verlauf folgt der Abspielposition – beim Cursor-Setzen und Abschalten bleibt er", async () => {
-  await seekBeat(13); // im G7
+test("the course follows the playback position – it stays when setting the cursor and when switching off", async () => {
+  await seekBeat(13); // in the G7
   await app.waitFor(() => T.$$(".hc-chips .hc-chip b").map((b) => b.textContent).at(-1) === "G7", { what: "Verlauf endet mit G7" });
   assert.deepEqual(await sketch(), ["C", "a", "Fis", "G7"]);
-  await seekBeat(5); // im a
+  await seekBeat(5); // in the a
   await app.waitFor(() => T.$$(".hc-chips .hc-chip b").map((b) => b.textContent).at(-1) === "a", { what: "Verlauf endet mit a" });
   assert.deepEqual(await sketch(), ["C", "a"]);
-  // abgeschaltet: bleibt stehen
+  // switched off: stays put
   await app.eval(() => T.$(".hc-follow input").click());
   await seekBeat(13);
   await sleep(400);
@@ -107,9 +107,9 @@ test("Der Verlauf folgt der Abspielposition – beim Cursor-Setzen und Abschalte
   await app.waitFor(() => T.$$(".hc-chips .hc-chip b").map((b) => b.textContent).at(-1) === "G7", { what: "wieder G7" });
 });
 
-test("Einfügen schafft Platz (alles danach rückt nach hinten), Ersetzen überschreibt", async () => {
+test("insert makes room (everything after it moves back), replace overwrites", async () => {
   await setup();
-  await seekBeat(13); // hinter G7 weiterschreiben
+  await seekBeat(13); // continue writing after G7
   await app.waitFor(() => T.$$(".hc-chips .hc-chip b").map((b) => b.textContent).at(-1) === "G7", { what: "G7 am Cursor" });
   await app.waitFor(() => T.$$(".hc-path .btn.blue").length > 0, { what: "Wege zum Schluss" });
   const append = async () => {
@@ -126,7 +126,7 @@ test("Einfügen schafft Platz (alles danach rückt nach hinten), Ersetzen übers
   assert.equal(after.length, before.length + fresh, "Akkorde eingefügt, keiner ersetzt");
   assert.ok(after.includes(16 + 4 * fresh), "das letzte C ist mitgerückt");
   assert.match(await app.eval(() => T.st.snapshot.peek().undoLabel), /einfügen/);
-  // zurück und ersetzen: Melodie bleibt, das C bei 16 wird überschrieben
+  // back and replace: melody stays, the C at 16 is overwritten
   await app.eval(() => T.st.act(window.__TAURI__.core.invoke("undo")));
   await app.waitFor(() => T.st.snapshot.peek().project.tracks.find((t) => t.name === "Melodie").clips[0].source.notes[0].startBeats === 16, { what: "zurück" });
   await seekBeat(13);
@@ -142,7 +142,7 @@ test("Einfügen schafft Platz (alles danach rückt nach hinten), Ersetzen übers
   assert.equal((await chordStarts()).length, before.length - 1 + fresh, "das letzte C wurde ersetzt");
 });
 
-test("Agent: Stimmung und Brüche in analyze_harmony, write_chords mit mode einfuegen", async () => {
+test("agent: mood and breaks in analyze_harmony, write_chords with mode einfuegen", async () => {
   await setup();
   const a = await app.mcp("analyze_harmony", { key: "C-Dur" });
   const fis = a.akkorde.find((c) => c.name === "Fis");
@@ -152,6 +152,6 @@ test("Agent: Stimmung und Brüche in analyze_harmony, write_chords mit mode einf
   assert.equal(await melodyNote(), 24, "Melodie um zwei Takte nach hinten");
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });

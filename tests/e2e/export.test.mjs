@@ -1,7 +1,7 @@
-// Export: Knopf „Exportieren“ (Strg+E) mit Dialog – WAV und FLAC (16/24 Bit),
-// Opus (Bitrate wählbar, Standard 160 kbit/s), Stems (eine WAV je Spur) und
-// MIDI; ganzes Stück oder markierter Bereich. Geprüft werden die Dateien
-// selbst: Kopf, Länge – FLAC und Opus dekodiert der Browser unabhängig.
+// Export: "Export" button (Ctrl+E) with dialog – WAV and FLAC (16/24 bit),
+// Opus (selectable bitrate, default 160 kbit/s), stems (one WAV per track) and
+// MIDI; whole piece or selected range. The files themselves are checked:
+// header, length – FLAC and Opus are decoded independently by the browser.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -38,7 +38,7 @@ const closeDialog = async () => {
   await app.waitFor(() => !T.$(".export-modal"), { what: "Dialog zu" });
 };
 
-/** WAV-Kopf lesen (eigener Schreiber: 44 Bytes). */
+/** Reads a WAV header (own writer: 44 bytes). */
 function wavInfo(path) {
   const b = readFileSync(path);
   return {
@@ -57,7 +57,7 @@ function wavInfo(path) {
   };
 }
 
-/** Datei im Fenster mit dem Dekoder des Browsers öffnen. */
+/** Opens a file in the window with the browser's decoder. */
 const decode = (path) => app.eval(async (b64) => {
   const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   const buf = await new OfflineAudioContext(2, 48000, 48000).decodeAudioData(bytes.buffer);
@@ -67,7 +67,7 @@ const decode = (path) => app.eval(async (b64) => {
   return { channels: buf.numberOfChannels, duration: buf.duration, peak };
 }, readFileSync(path).toString("base64"));
 
-test("Leeres Projekt: Dialog mit fünf Formaten, nichts zu exportieren", async () => {
+test("empty project: dialog with five formats, nothing to export", async () => {
   await app.reset();
   await openDialog();
   assert.deepEqual(await app.eval(() => T.$$(".ex-format .seg-btn").map((b) => b.textContent)), ["WAV", "FLAC", "Opus", "Stems", "MIDI"]);
@@ -80,7 +80,7 @@ test("Leeres Projekt: Dialog mit fünf Formaten, nichts zu exportieren", async (
   await closeDialog();
 });
 
-test("Opus: Bitrate wählbar, Standard 160 kbit/s; Hinweis auf Ablage und Größe", async () => {
+test("Opus: bitrate selectable, default 160 kbit/s; note on location and size", async () => {
   await content();
   await openDialog();
   await app.clickOn(".ex-format .seg-btn", { text: "Opus" });
@@ -95,7 +95,7 @@ test("Opus: Bitrate wählbar, Standard 160 kbit/s; Hinweis auf Ablage und Größ
   await closeDialog();
 });
 
-test("WAV über den Dialog: Datei geschrieben, Kopf und Länge stimmen, „Im Ordner zeigen“", async () => {
+test("WAV via the dialog: file written, header and length are correct, “Show in folder”", async () => {
   await content();
   await openDialog();
   await app.clickOn(".ex-format .seg-btn", { text: "WAV" });
@@ -110,7 +110,7 @@ test("WAV über den Dialog: Datei geschrieben, Kopf und Länge stimmen, „Im Or
   assert.ok(await app.eval(() => !!T.$(".ex-reveal")), "Knopf „Im Ordner zeigen“");
   const w = wavInfo(file("Probe.wav"));
   assert.deepEqual([w.riff, w.wave, w.channels, w.rate, w.bits], ["RIFF", "WAVE", 2, 48000, 24]);
-  // Länge: bis zum Ende des Stücks, plus höchstens einen Takt und 6 s Nachklang
+  // Length: up to the end of the piece, plus at most one bar and 6 s of tail
   const p = await app.eval(() => T.st.snapshot.peek().project);
   const endBeats = Math.max(...p.tracks.flatMap((t) => t.clips.map((c) => c.startBeats + c.source.lengthBeats)));
   const endSecs = endBeats * 60 / p.tempoBpm;
@@ -118,7 +118,7 @@ test("WAV über den Dialog: Datei geschrieben, Kopf und Länge stimmen, „Im Or
   assert.ok(w.peak > 0.02, `hörbar: Spitze ${w.peak}`);
   await app.clickOn(".ex-close");
   await app.waitFor(() => !T.$(".export-modal"), { what: "Dialog zu" });
-  // derselbe Name noch einmal: Warnung vor dem Überschreiben, Format gemerkt
+  // same name again: warning before overwriting, format remembered
   await openDialog();
   await app.eval(() => {
     const n = T.$(".ex-name");
@@ -130,7 +130,7 @@ test("WAV über den Dialog: Datei geschrieben, Kopf und Länge stimmen, „Im Or
   await closeDialog();
 });
 
-test("FLAC und Opus: der Browser dekodiert beide, Länge passt zur WAV", async () => {
+test("FLAC and Opus: the browser decodes both, length matches the WAV", async () => {
   await content();
   const wav = await app.mcp("export_project", { format: "wav", name: "Vergleich", bits: 16 });
   const flac = await app.mcp("export_project", { format: "flac", name: "Vergleich" });
@@ -142,7 +142,7 @@ test("FLAC und Opus: der Browser dekodiert beide, Länge passt zur WAV", async (
   const o = readFileSync(opus.path);
   assert.equal(o.toString("ascii", 0, 4), "OggS");
   assert.ok(o.includes(Buffer.from("OpusHead")) && o.includes(Buffer.from("OpusTags")));
-  // 96 kbit/s ≈ 12 kB je Sekunde (variable Rate: großzügig)
+  // 96 kbit/s ≈ 12 kB per second (variable rate: generous)
   assert.ok(opus.bytes < opus.seconds * 12000 * 2 + 4000, `${opus.bytes} Bytes für ${opus.seconds} s`);
   const df = await decode(flac.path);
   const dop = await decode(opus.path);
@@ -153,7 +153,7 @@ test("FLAC und Opus: der Browser dekodiert beide, Länge passt zur WAV", async (
   assert.ok(df.peak > 0.02 && dop.peak > 0.02, `hörbar: ${df.peak}, ${dop.peak}`);
 });
 
-test("Stems: ein Ordner, je hörbare Spur eine gleich lange WAV; stumme fehlen", async () => {
+test("stems: one folder, one equally long WAV per audible track; muted ones are missing", async () => {
   await content();
   const r = await app.mcp("export_project", { format: "stems", name: "Teile" });
   assert.ok(r.path.endsWith("Teile – Stems"), r.path);
@@ -162,14 +162,14 @@ test("Stems: ein Ordner, je hörbare Spur eine gleich lange WAV; stumme fehlen",
   assert.match(names[0], /^01 /);
   const lens = names.map((n) => wavInfo(join(r.path, n)).frames);
   assert.equal(lens[0], lens[1], "gleich lang");
-  // eine Spur stumm: nur noch eine Datei
+  // one track muted: only one file left
   const p = await app.eval(() => T.st.snapshot.peek().project);
   await app.mcp("execute", { commands: [{ type: "setTrack", trackId: p.tracks[1].id, patch: { mute: true } }] });
   const r2 = await app.mcp("export_project", { format: "stems", name: "Teile ohne" });
   assert.equal(readdirSync(r2.path).length, 1);
 });
 
-test("Markierter Bereich: WAV genau so lang, MIDI nur die Noten darin", async () => {
+test("selected range: WAV exactly that long, MIDI only the notes in it", async () => {
   await content();
   await app.eval(() => T.st.act(window.__TAURI__.core.invoke("set_loop_range", { range: [0, 4] })));
   const w = await app.mcp("export_project", { format: "wav", name: "Bereich", range: true });
@@ -181,7 +181,7 @@ test("Markierter Bereich: WAV genau so lang, MIDI nur die Noten darin", async ()
   assert.equal(b.readUInt16BE(8), 1, "Typ 1");
   assert.equal(b.readUInt16BE(10), 3, "Tempo-Spur + 2 Instrumente");
   assert.equal(b.readUInt16BE(12), 480);
-  // Im Dialog: Haken für den Bereich mit Taktangabe
+  // In the dialog: checkbox for the range, with bar numbers
   await openDialog();
   assert.equal(await app.eval(() => T.$(".ex-range").disabled), false);
   assert.match(await app.eval(() => T.$(".ex-range").closest("label").textContent), /Takt 1/);
@@ -189,13 +189,13 @@ test("Markierter Bereich: WAV genau so lang, MIDI nur die Noten darin", async ()
   await closeDialog();
 });
 
-test("Agent: export_project meldet leeres Projekt und fehlenden Bereich", async () => {
+test("agent: export_project reports an empty project and a missing range", async () => {
   await app.reset();
   await assert.rejects(app.mcp("export_project", { format: "wav" }), /leer/);
   await content();
   await assert.rejects(app.mcp("export_project", { format: "wav", range: true }), /Kein Zeitraum/);
   await assert.rejects(app.mcp("export_project", { format: "mp3" }), /Unbekanntes Exportformat|mp3/);
-  // Strg+E öffnet den Dialog
+  // Ctrl+E opens the dialog
   await app.key("e", { mods: 2 });
   await app.waitFor(() => T.$(".export-modal"), { what: "Dialog per Strg+E" });
   await closeDialog();

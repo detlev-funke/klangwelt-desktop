@@ -1,19 +1,19 @@
-// Leistungsmessung der Desktop-App (Release-Build) über das echte IPC –
-// zum Vergleich vor und nach Umbauten am Kern. Kein Test mit Grenzwerten,
-// sondern eine Tabelle mit Medianen.
+// Performance measurement of the desktop app (release build) over the real IPC –
+// for comparison before and after changes to the core. Not a test with limits,
+// but a table of medians.
 //
-// Aufruf (in ui/ vorher `npm run release`):
-//   KLANGWELT_EXE=target/release/klangwelt.exe node tests/perf/desktop.mjs [Durchläufe]
+// Usage (run `npm run release` in ui/ first):
+//   KLANGWELT_EXE=target/release/klangwelt.exe node tests/perf/desktop.mjs [runs]
 //
-// Gemessen wird im Fenster mit performance.now(): die Zeit vom Aufruf bis zur
-// Antwort, also IPC + Befehl + Antwort-JSON.
+// Measured in the window with performance.now(): the time from the call to the
+// response, i.e. IPC + command + response JSON.
 import { startApp } from "../e2e/harness.mjs";
 
 const runs = Number(process.argv[2] ?? 5);
 const app = await startApp();
 const result = {};
 
-/** Führt `body` (Text, im Fenster; `call` steht bereit) `n`-mal aus, nach `prep`; Median in ms. */
+/** Runs `body` (text, in the window; `call` is available) `n` times, after `prep`; median in ms. */
 async function measure(name, body, { n = runs, prep = "" } = {}) {
   const xs = [];
   for (let i = 0; i < n; i++) {
@@ -35,7 +35,7 @@ const run = (code) => app.eval(`(async () => { const call = (cmd, args) => windo
 
 try {
   await run(`await call("project_new"); await call("set_metronome", { enabled: false });`);
-  // kleine Befehle: reiner IPC- und Ablaufaufwand
+  // small commands: pure IPC and dispatch overhead
   await measure("get_state (leer) ×100", `for (let i = 0; i < 100; i++) await call("get_state");`);
   await run(`await call("create_demo");`);
   await measure("get_state (Demo) ×100", `for (let i = 0; i < 100; i++) await call("get_state");`);
@@ -45,7 +45,7 @@ try {
     `for (let i = 0; i < 50; i++) await call("execute", { command: { type: "setTrack", trackId: ${tid}, patch: { gainDb: -(i % 6) } }, merge: i > 0 });`,
   );
   await measure("undo+redo ×20", `for (let i = 0; i < 20; i++) { await call("undo"); await call("redo"); }`);
-  // große Abläufe
+  // large flows
   await measure("create_demo", `await call("create_demo");`, { prep: `await call("project_new");` });
   const plan = `(await call("song_templates"))[0]`;
   await measure("song_write (Trance)", `await call("song_write", { plan, replace: false });`, { prep: `await call("project_new"); const plan = ${plan};` });

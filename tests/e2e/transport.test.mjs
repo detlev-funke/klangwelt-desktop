@@ -1,4 +1,4 @@
-// Transport: Wiedergabe, Stopp (Position und Ansicht an den Anfang), Wiederholen, Metronom, Tempo.
+// Transport: playback, stop (position and view to the start), redo, metronome, tempo.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -14,7 +14,7 @@ after(async () => {
   await app?.close();
 });
 
-/** Instrumentspur mit einem Takt Noten ab `start` (Schläge). */
+/** Instrument track with one bar of notes from `start` (beats). */
 async function oneBar(start = 0) {
   return app.eval(async (start) => {
     await T.st.run({ type: "addTrack", track: { id: 0, name: "Takt", kind: "instrument" } });
@@ -27,7 +27,7 @@ async function oneBar(start = 0) {
 
 const beatNow = () => app.eval(() => (T.st.status.peek().positionSecs * T.st.snapshot.peek().project.tempoBpm) / 60);
 
-/** Schläge während der Wiedergabe beobachten. */
+/** Observe beats during playback. */
 async function watchBeats(ms, every = 100) {
   const seen = [];
   const end = Date.now() + ms;
@@ -38,7 +38,7 @@ async function watchBeats(ms, every = 100) {
   return seen;
 }
 
-test("Leertaste startet und pausiert, die Position bleibt stehen", async () => {
+test("space bar starts and pauses, the position stays", async () => {
   await app.reset();
   await oneBar();
   await app.key(" ");
@@ -52,7 +52,7 @@ test("Leertaste startet und pausiert, die Position bleibt stehen", async () => {
   assert.equal(await beatNow(), pos, "Pause hält die Position");
 });
 
-test("Stopp-Knopf: anhalten, Position und Ansicht an den Anfang", async () => {
+test("stop button: halt, position and view to the start", async () => {
   await app.reset();
   await oneBar(16);
   await app.eval(() => window.__TAURI__.core.invoke("seek", { seconds: 6 }));
@@ -64,7 +64,7 @@ test("Stopp-Knopf: anhalten, Position und Ansicht an den Anfang", async () => {
   assert.equal(await app.eval(() => T.st.viewport.peek().scrollX), 0, "Ansicht springt an den Anfang");
 });
 
-test("Enter und Pos1 wirken wie Stopp", async () => {
+test("Enter and Home act like stop", async () => {
   for (const key of ["Enter", "Home"]) {
     await app.eval(() => window.__TAURI__.core.invoke("seek", { seconds: 3 }));
     await app.eval(() => (T.st.viewport.value = { ...T.st.viewport.peek(), scrollX: 500 }));
@@ -95,7 +95,7 @@ test("Metronome: off at first, the last chosen state survives a restart", async 
   assert.equal(await metro(), false, "off after the second restart");
 });
 
-test("Metronom-Knopf schaltet um", async () => {
+test("metronome button toggles", async () => {
   const before = await app.eval(() => T.st.snapshot.peek().engine.metronome);
   await app.clickOn("kw-transport .btn[title='Metronom']");
   await app.waitFor((b) => T.st.snapshot.peek().engine.metronome === !b, { what: "Metronom umgeschaltet" }, before);
@@ -104,7 +104,7 @@ test("Metronom-Knopf schaltet um", async () => {
   await app.waitFor((b) => T.st.snapshot.peek().engine.metronome === b, {}, before);
 });
 
-test("Wiederholen: Knopf und Taste L, Zustand im Knopf", async () => {
+test("repeat: button and L key, state in the button", async () => {
   await app.reset();
   const loopBtn = "kw-transport .btn[title^='Wiederholen']";
   await app.clickOn(loopBtn);
@@ -116,9 +116,9 @@ test("Wiederholen: Knopf und Taste L, Zustand im Knopf", async () => {
   assert.ok(!(await app.eval((s) => T.$(s).classList.contains("on"), loopBtn)));
 });
 
-test("Wiederholen ohne Bereich: am Ende des Stücks wieder von vorn", async () => {
+test("repeat without a range: at the end of the piece, start over", async () => {
   await app.reset();
-  await oneBar(0); // Stück = 1 Takt (4 Schläge)
+  await oneBar(0); // piece = 1 bar (4 beats)
   await app.eval(() => window.__TAURI__.core.invoke("set_loop", { enabled: true }));
   await app.eval(() => window.__TAURI__.core.invoke("seek", { seconds: (3 * 60) / T.st.snapshot.peek().project.tempoBpm }));
   await app.eval(() => window.__TAURI__.core.invoke("transport", { action: "play" }));
@@ -128,7 +128,7 @@ test("Wiederholen ohne Bereich: am Ende des Stücks wieder von vorn", async () =
   assert.ok(seen.some((b) => b < 2), `springt an den Anfang: ${seen.map((b) => b.toFixed(1))}`);
 });
 
-test("Wiederholen mit markiertem Bereich: nur der Bereich", async () => {
+test("repeat with a selected range: only the range", async () => {
   await app.reset();
   await oneBar(0);
   await oneBar(8);
@@ -145,9 +145,9 @@ test("Wiederholen mit markiertem Bereich: nur der Bereich", async () => {
   assert.match(await app.eval(() => T.$("kw-transport .btn[title^='Wiederholen']").title), /markierter Bereich, Takt 2\.1 bis 3\.1/);
 });
 
-test("Wiederholen aus: hält einen Takt nach dem Ende des Stücks an, Play beginnt dann vorn", async () => {
+test("repeat off: stops one bar after the end of the piece, Play then starts at the beginning", async () => {
   await app.reset();
-  await oneBar(0); // Stück endet bei Schlag 4 → Halt bei Schlag 8
+  await oneBar(0); // piece ends at beat 4 → stops at beat 8
   const bpm = await app.eval(() => T.st.snapshot.peek().project.tempoBpm);
   await app.eval(async (bpm) => {
     await window.__TAURI__.core.invoke("seek", { seconds: (6.5 * 60) / bpm });
@@ -157,14 +157,14 @@ test("Wiederholen aus: hält einen Takt nach dem Ende des Stücks an, Play begin
   await app.waitFor(() => !T.st.status.peek().playing, { what: "angehalten", timeout: 4000 });
   const beat = await app.eval((bpm) => (T.st.status.peek().positionSecs * bpm) / 60, bpm);
   assert.ok(Math.abs(beat - 8) < 0.1, `hält einen Takt nach dem Ende: Schlag ${beat.toFixed(2)}`);
-  // Play steht hinter dem Ende: beginnt wieder vorn
+  // Play is past the end: starts at the front again
   await app.eval(() => window.__TAURI__.core.invoke("transport", { action: "play" }));
   const seen = await watchBeats(500);
   await app.eval(() => window.__TAURI__.core.invoke("transport", { action: "stop" }));
   assert.ok(seen.some((b) => b < 2), `von vorn: ${seen.map((b) => b.toFixed(1))}`);
 });
 
-test("Markierter Bereich ohne Wiederholen: Play spielt genau den Bereich einmal, dann zurück an den Anfang", async () => {
+test("selected range without repeat: Play plays exactly the range once, then back to the start", async () => {
   await app.reset();
   await oneBar(0);
   await oneBar(8);
@@ -174,7 +174,7 @@ test("Markierter Bereich ohne Wiederholen: Play spielt genau den Bereich einmal,
     await T.st.act(window.__TAURI__.core.invoke("set_loop", { enabled: false }));
     await window.__TAURI__.core.invoke("seek", { seconds: 0 });
   });
-  // Abspielkopf außerhalb (Schlag 0): Play beginnt am Bereichsanfang
+  // Playhead outside (beat 0): Play starts at the start of the range
   await app.clickOn("kw-transport .btn[title^='Wiedergabe']");
   const seen = await watchBeats(1200);
   await app.waitFor(() => T.st.status.peek().playing, { what: "spielt", timeout: 2000 }).catch(() => {});
@@ -184,7 +184,7 @@ test("Markierter Bereich ohne Wiederholen: Play spielt genau den Bereich einmal,
   assert.ok(Math.abs(beat - 4) < 0.1, `zurück an den Bereichsanfang: Schlag ${beat.toFixed(2)}`);
 });
 
-test("Tempo im Feld ändern", async () => {
+test("change tempo in the field", async () => {
   await app.reset();
   await app.eval(() => {
     const i = T.$("kw-transport input.num");
@@ -194,7 +194,7 @@ test("Tempo im Feld ändern", async () => {
   await app.waitFor(() => T.st.snapshot.peek().project.tempoBpm === 90, { what: "Tempo 90" });
 });
 
-/** Tempo über das Feld setzen (wie ein Schritt mit der Pfeiltaste). */
+/** Set the tempo via the field (like a step with the arrow key). */
 const setTempoField = (bpm) =>
   app.eval((bpm) => {
     const i = T.$("kw-transport input.num");
@@ -202,7 +202,7 @@ const setTempoField = (bpm) =>
     i.dispatchEvent(new Event("change"));
   }, bpm);
 
-/** Größter Ausgangspegel über `ms` (gemessen wird auch stumm). */
+/** Highest output level over `ms` (measured even when muted). */
 async function peakOver(ms) {
   let peak = 0;
   const end = Date.now() + ms;
@@ -213,15 +213,15 @@ async function peakOver(ms) {
   return peak;
 }
 
-test("Tempo während der Wiedergabe mehrmals ändern: läuft weiter, Schlagposition bleibt", async () => {
+test("change tempo several times during playback: keeps running, beat position stays", async () => {
   await app.reset();
-  // Demo: Audio-Clips (werden neu gestreckt) und Noten (werden neu gerendert);
-  // dahinter Noten bis Schlag 28, damit es während des ganzen Tests klingt.
+  // Demo: audio clips (are re-stretched) and notes (are re-rendered);
+  // behind them notes up to beat 28, so it sounds throughout the whole test.
   await app.eval(() => T.st.act(window.__TAURI__.core.invoke("create_demo")));
   for (const start of [16, 20, 24]) await oneBar(start);
   let bpm = await app.eval(() => T.st.snapshot.peek().project.tempoBpm);
-  // ab Schlag 8: Ginge die Position in Schlägen verloren, spränge sie bei
-  // jedem Wechsel um mehrere Schläge
+  // from beat 8: if the position in beats were lost, it would jump by several
+  // beats on every change
   await app.eval(async (bpm) => {
     await window.__TAURI__.core.invoke("seek", { seconds: (8 * 60) / bpm });
     await window.__TAURI__.core.invoke("transport", { action: "play" });
@@ -235,7 +235,7 @@ test("Tempo während der Wiedergabe mehrmals ändern: läuft weiter, Schlagposit
     const peak = await peakOver(250);
     assert.ok(await app.eval(() => T.st.status.peek().playing), `spielt weiter nach ${next} BPM`);
     assert.ok(peak > 0.01, `klingt weiter nach ${next} BPM (Pegel ${peak})`);
-    // vorangekommen um die vergangene Zeit, zwischen altem und neuem Tempo
+    // advanced by the elapsed time, between old and new tempo
     const now = { beat: await beatNow(), t: Date.now() };
     const secs = (now.t - last.t) / 1000;
     const [lo, hi] = [(secs * Math.min(bpm, next)) / 60 - 0.5, (secs * Math.max(bpm, next)) / 60 + 0.5];
@@ -246,12 +246,12 @@ test("Tempo während der Wiedergabe mehrmals ändern: läuft weiter, Schlagposit
   await app.eval(() => window.__TAURI__.core.invoke("transport", { action: "stop" }));
 });
 
-test("Schnelle Tempo-Schritte im Feld: der letzte Wert kommt an, ohne Stau", async () => {
+test("rapid tempo steps in the field: the last value arrives, without a backlog", async () => {
   await app.reset();
   await app.eval(() => T.st.act(window.__TAURI__.core.invoke("create_demo")));
   await app.eval(() => window.__TAURI__.core.invoke("transport", { action: "play" }));
   await app.waitFor(() => T.st.status.peek().playing, { what: "spielt" });
-  // 15 Schritte im Abstand einer Tastenwiederholung (~30 ms) über das Feld …
+  // 15 steps at the interval of a key repeat (~30 ms) via the field …
   const field = await app.eval(async () => {
     const i = T.$("kw-transport input.num");
     for (let v = 111; v <= 125; v++) {
@@ -267,8 +267,8 @@ test("Schnelle Tempo-Schritte im Feld: der letzte Wert kommt an, ohne Stau", asy
   const core = await app.eval(async () => (await window.__TAURI__.core.invoke("get_state")).project.tempoBpm);
   assert.equal(core, 125, "im Kern gilt der letzte Wert");
   assert.ok(await app.eval(() => T.st.status.peek().playing), "spielt weiter");
-  // … und zum Vergleich jeder Schritt als eigener Befehl (so schickte das Feld
-  // früher): Jeder rendert neu, und die Befehle können sich dabei überholen.
+  // … and for comparison each step as a command of its own (as the field sent
+  // it before): each re-renders, and the commands can overtake each other.
   const each = await app.eval(async () => {
     const all = [];
     for (let v = 126; v <= 140; v++) {
@@ -280,12 +280,12 @@ test("Schnelle Tempo-Schritte im Feld: der letzte Wert kommt an, ohne Stau", asy
     return { ms: performance.now() - sent, bpm: (await window.__TAURI__.core.invoke("get_state")).project.tempoBpm };
   });
   console.log(`# Nachlauf nach dem letzten Schritt: Feld ${field.toFixed(0)} ms; jeder Schritt einzeln ${each.ms.toFixed(0)} ms, Ende bei ${each.bpm} BPM (zuletzt geschickt: 140)`);
-  // (seit das Neu-Rendern schnell ist, liegen beide nah beieinander)
+  // (since re-rendering is fast, both are close together)
   assert.ok(field < each.ms + 100, `das Feld staut nicht: ${field.toFixed(0)} ms gegen ${each.ms.toFixed(0)} ms`);
   await app.eval(() => window.__TAURI__.core.invoke("transport", { action: "stop" }));
 });
 
-test("Rückgängig und Wiederholen über die Knöpfe", async () => {
+test("undo and redo via the buttons", async () => {
   await app.reset();
   await oneBar();
   assert.equal(await app.eval(() => T.st.snapshot.peek().project.tracks.length), 1);
@@ -295,6 +295,6 @@ test("Rückgängig und Wiederholen über die Knöpfe", async () => {
   await app.waitFor(() => T.st.snapshot.peek().project.tracks[0].clips.length === 1, { what: "Clip wiederhergestellt" });
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });

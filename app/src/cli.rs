@@ -1,16 +1,16 @@
-//! Kommandozeile von `klangwelt.exe` – ein Programm für alles:
+//! Command line of `klangwelt.exe` – one program for everything:
 //!
 //! ```text
-//! klangwelt                        Fenster öffnen
-//! klangwelt <datei.klangwelt>      Projekt öffnen (läuft Klangwelt schon: dort)
-//! klangwelt --mcp                  stdio-Brücke für MCP-Clients (Claude Desktop …)
-//! klangwelt index <befehl> …       Musikbibliothek: build, query, analyze, chords
+//! klangwelt                        Open the window
+//! klangwelt <file.klangwelt>       Open a project (if Klangwelt is already running: there)
+//! klangwelt --mcp                  stdio bridge for MCP clients (Claude Desktop …)
+//! klangwelt index <command> …      Music library: build, query, analyze, chords
 //! klangwelt --help | --version
 //! ```
 //!
-//! Die Release-Version ist ein Fensterprogramm ohne eigene Konsole. Für Ausgaben
-//! hängt sie sich an die Konsole, aus der sie gestartet wurde (`AttachConsole`);
-//! ist die Ausgabe umgeleitet (Pipe, Datei – so bei MCP-Clients), bleibt sie dort.
+//! The release build is a windowed program without a console of its own. To print
+//! output it attaches to the console it was started from (`AttachConsole`);
+//! if the output is redirected (pipe, file – as with MCP clients), it stays there.
 
 use klang_mcp::client::{post, split_url};
 use klang_mcp::DEFAULT_PORT;
@@ -20,31 +20,32 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 pub const HELP: &str = "\
-Klangwelt – Musik machen, aufnehmen, erkennen, Klänge gestalten
+Klangwelt – make music, record, recognise, shape sounds
 
-Aufruf:
-  klangwelt                          Fenster öffnen
-  klangwelt <datei.klangwelt>        Projekt öffnen (läuft Klangwelt schon, dort)
-  klangwelt --mcp                    stdio-Brücke für MCP-Clients wie Claude Desktop;
-                                     startet Klangwelt, falls es noch nicht läuft
-  klangwelt index build <ordner> <index.kwix>
-                                     MusicXML/MXL-Dateien eines Ordners indizieren
-  klangwelt index merge <ziel.kwix> <a.kwix> <b.kwix> …
-                                     Indizes zu einem verschmelzen (Doppelte einmal)
+Usage:
+  klangwelt                          Open the window
+  klangwelt <file.klangwelt>         Open a project (if Klangwelt is already running: there)
+  klangwelt --mcp                    stdio bridge for MCP clients such as Claude Desktop;
+                                     starts Klangwelt if it isn't running yet
+  klangwelt index build <folder> <index.kwix>
+                                     Index the MusicXML/MXL files of a folder
+  klangwelt index merge <target.kwix> <a.kwix> <b.kwix> …
+                                     Merge indexes into one (duplicates once)
   klangwelt index query <index.kwix> \"60:1 62:1 64:2 …\"
-                                     Melodie suchen (MIDI:Dauer, mind. 5 Noten)
-  klangwelt index analyze <datei.musicxml|.mxl>
-                                     Stimmen, Kadenzen, Stimmung als JSON
-  klangwelt index chords <index.kwix> <tonart> <akkord> …
-                                     häufigste Fortsetzungen, z. B. C-Dur C F G7
+                                     Search for a melody (MIDI:duration, at least 5 notes)
+  klangwelt index analyze <file.musicxml|.mxl>
+                                     Voices, cadences, mood as JSON
+  klangwelt index chords <index.kwix> <key> <chord> …
+                                     Most frequent continuations, e.g. C-Dur C F G7
+                                     (key and chords with German note names)
   klangwelt --version | --help
 
-Umgebung: KLANGWELT_MCP_PORT (Port der App, Standard 7419), KLANGWELT_MCP_URL und
-KLANGWELT_MCP_TOKEN (Brücke), KLANGWELT_BIBLIOTHEK (Ordner für Bibliotheken).";
+Environment: KLANGWELT_MCP_PORT (the app's port, default 7419), KLANGWELT_MCP_URL and
+KLANGWELT_MCP_TOKEN (bridge), KLANGWELT_BIBLIOTHEK (folder for libraries).";
 
 #[derive(Debug, PartialEq)]
 pub enum Mode {
-    /// Fenster öffnen, optional mit einer Projektdatei.
+    /// Open the window, optionally with a project file.
     Gui { open: Option<PathBuf> },
     Mcp,
     Index(Vec<String>),
@@ -53,7 +54,7 @@ pub enum Mode {
     Error(String),
 }
 
-/// Aufruf auswerten (ohne Programmnamen).
+/// Parse the invocation (without the program name).
 pub fn parse(args: &[String]) -> Mode {
     let Some(first) = args.first() else { return Mode::Gui { open: None } };
     match first.as_str() {
@@ -62,11 +63,11 @@ pub fn parse(args: &[String]) -> Mode {
         "--help" | "-h" | "/?" | "help" => Mode::Help,
         "--version" | "-V" | "version" => Mode::Version,
         a if args.len() == 1 && (a.to_lowercase().ends_with(".klangwelt") || Path::new(a).is_file()) => Mode::Gui { open: Some(PathBuf::from(a)) },
-        _ => Mode::Error(format!("Unbekannter Aufruf: klangwelt {}", args.join(" "))),
+        _ => Mode::Error(format!("Unknown command: klangwelt {}", args.join(" "))),
     }
 }
 
-/// Führt einen Kommandozeilen-Modus aus (nicht das Fenster) und liefert den Exit-Code.
+/// Runs a command-line mode (not the window) and returns the exit code.
 pub fn run(mode: Mode) -> i32 {
     match mode {
         Mode::Mcp => {
@@ -96,11 +97,11 @@ pub fn run(mode: Mode) -> i32 {
     }
 }
 
-// ------------------------------------------------------------------ Konsole
+// ------------------------------------------------------------------ Console
 
-/// Fensterprogramm aus einer Konsole gestartet: Ausgaben dorthin. Bei
-/// umgeleiteter Ausgabe (Pipe, Datei) oder in der Debug-Version (eigene
-/// Konsole) ist nichts zu tun.
+/// Windowed program started from a console: output goes there. If the output is
+/// redirected (pipe, file) or in the debug build (own console), there is
+/// nothing to do.
 #[cfg(windows)]
 fn attach_console() {
     #[link(name = "kernel32")]
@@ -110,7 +111,7 @@ fn attach_console() {
     }
     const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
     const STD_OUTPUT_HANDLE: u32 = -11i32 as u32;
-    // SAFETY: reine Win32-Aufrufe ohne Zeiger-Argumente.
+    // SAFETY: plain Win32 calls without pointer arguments.
     unsafe {
         if GetStdHandle(STD_OUTPUT_HANDLE).is_null() {
             AttachConsole(ATTACH_PARENT_PROCESS);
@@ -134,7 +135,7 @@ fn mcp_token() -> Option<String> {
     std::env::var("KLANGWELT_MCP_TOKEN").ok().filter(|t| !t.is_empty())
 }
 
-/// `klangwelt --mcp`: stdin/stdout ↔ HTTP der laufenden App; startet sie bei Bedarf.
+/// `klangwelt --mcp`: stdin/stdout ↔ HTTP of the running app; starts it if needed.
 fn mcp_bridge() {
     let url = mcp_url();
     let token = mcp_token();
@@ -144,8 +145,8 @@ fn mcp_bridge() {
     klang_mcp::bridge::run(&url, token.as_deref(), stdin.lock(), stdout.lock(), Some(&mut start));
 }
 
-/// Klangwelt (dieses Programm, ohne Argumente) als eigenständiges Fenster starten
-/// und warten, bis sein MCP-Server antwortet.
+/// Starts Klangwelt (this program, without arguments) as a standalone window
+/// and waits until its MCP server responds.
 fn start_app(url: &str) -> Result<(), String> {
     use std::process::{Command, Stdio};
     let (host, _) = split_url(url).map_err(|e| e.to_string())?;
@@ -153,7 +154,7 @@ fn start_app(url: &str) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let make = || {
         let mut c = Command::new(&exe);
-        // Das Fenster soll die Pipes des MCP-Clients nicht erben
+        // The window must not inherit the MCP client's pipes
         c.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         c.env("KLANGWELT_MCP_PORT", port.to_string());
         c
@@ -164,8 +165,8 @@ fn start_app(url: &str) -> Result<(), String> {
         const DETACHED_PROCESS: u32 = 0x0000_0008;
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
         const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
-        // Aus dem Job-Objekt des Clients lösen, damit Klangwelt das Ende der Brücke überlebt
-        // (nicht jeder Job erlaubt das – dann ohne).
+        // Detach from the client's job object so Klangwelt outlives the end of the bridge
+        // (not every job allows this – then without).
         make()
             .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB)
             .spawn()
@@ -173,9 +174,9 @@ fn start_app(url: &str) -> Result<(), String> {
     };
     #[cfg(not(windows))]
     let child = make().spawn();
-    let child = child.map_err(|e| format!("Klangwelt ließ sich nicht starten: {e}"))?;
-    eprintln!("Klangwelt gestartet (PID {})", child.id());
-    let addr = host.to_socket_addrs().map_err(|e| e.to_string())?.next().ok_or("Adresse nicht auflösbar")?;
+    let child = child.map_err(|e| format!("Klangwelt could not be started: {e}"))?;
+    eprintln!("Klangwelt started (PID {})", child.id());
+    let addr = host.to_socket_addrs().map_err(|e| e.to_string())?.next().ok_or("Address cannot be resolved")?;
     let deadline = Instant::now() + Duration::from_secs(45);
     while Instant::now() < deadline {
         if TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok() {
@@ -183,15 +184,15 @@ fn start_app(url: &str) -> Result<(), String> {
         }
         std::thread::sleep(Duration::from_millis(250));
     }
-    Err("Klangwelt wurde gestartet, antwortet aber nicht".into())
+    Err("Klangwelt was started but does not respond".into())
 }
 
-/// Läuft Klangwelt schon? Dann die Datei dort öffnen (Doppelklick auf ein
-/// Projekt soll kein zweites Fenster öffnen). `true` = erledigt.
+/// Is Klangwelt already running? Then open the file there (double-clicking a
+/// project should not open a second window). `true` = done.
 pub fn forward_open(path: &Path) -> bool {
     let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let abs = abs.display().to_string();
-    // \\?\-Präfix von canonicalize entfernen
+    // Strip the \\?\ prefix added by canonicalize
     let abs = abs.strip_prefix(r"\\?\").unwrap_or(&abs).to_string();
     let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "open_project", "arguments": { "path": abs } } }).to_string();
     let auth = mcp_token().map(|t| format!("Bearer {t}"));
@@ -206,9 +207,9 @@ pub fn forward_open(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-// ------------------------------------------------------------------ Bibliothek
+// ------------------------------------------------------------------ Library
 
-/// `klangwelt index …` (früher das eigene Programm `klang-index`).
+/// `klangwelt index …` (formerly the separate program `klang-index`).
 mod index {
     use klang_music::analysis::analyze_score;
     use klang_music::chordstats::Rel;
@@ -238,7 +239,7 @@ mod index {
         match result {
             Ok(()) => 0,
             Err(e) => {
-                eprintln!("Fehler: {e}");
+                eprintln!("Error: {e}");
                 1
             }
         }
@@ -251,9 +252,9 @@ mod index {
             out,
             |done, total| {
                 if done == 0 {
-                    eprintln!("{total} Dateien gefunden");
+                    eprintln!("{total} files found");
                 } else if done == total {
-                    eprintln!("  {done} / {total} – führe Index zusammen …");
+                    eprintln!("  {done} / {total} – merging the index …");
                 } else if done % 10_000 == 0 {
                     eprintln!("  {done} / {total} …");
                 }
@@ -261,10 +262,10 @@ mod index {
             &AtomicBool::new(false),
         )?;
         for e in &stats.errors {
-            eprintln!("  übersprungen: {e}");
+            eprintln!("  skipped: {e}");
         }
         println!(
-            "Fertig in {:.1} s: {} Partituren, {} Stimmen, {} n-Gramme, {} Fundstellen, {} Fehler → {} ({:.1} MB)",
+            "Done in {:.1} s: {} scores, {} voices, {} n-grams, {} postings, {} errors → {} ({:.1} MB)",
             started.elapsed().as_secs_f32(),
             stats.scores,
             stats.voices,
@@ -289,7 +290,7 @@ mod index {
             }
         }, &AtomicBool::new(false))?;
         println!(
-            "Fertig in {:.1} s: {} Partituren, {} Stimmen ({} Partituren waren doppelt) → {} ({:.1} MB)",
+            "Done in {:.1} s: {} scores, {} voices ({} scores were duplicates) → {} ({:.1} MB)",
             started.elapsed().as_secs_f32(),
             stats.scores,
             stats.docs,
@@ -306,8 +307,8 @@ mod index {
             .filter(|p| !p.is_empty())
             .map(|tok| {
                 let (m, d) = tok.split_once(':').unwrap_or((tok, "1"));
-                let midi: u8 = m.parse().map_err(|_| format!("ungültige Tonhöhe: {m}"))?;
-                let dur: f64 = d.parse().map_err(|_| format!("ungültige Dauer: {d}"))?;
+                let midi: u8 = m.parse().map_err(|_| format!("invalid pitch: {m}"))?;
+                let dur: f64 = d.parse().map_err(|_| format!("invalid duration: {d}"))?;
                 let n = MelodyNote { onset: t, duration: dur, midi };
                 t += dur;
                 Ok(n)
@@ -322,21 +323,21 @@ mod index {
         let loaded = started.elapsed();
         let hits = index.search(&q, 10);
         eprintln!(
-            "Index: {} Stimmen (geladen in {:.2} s), Suche: {:.1} ms",
+            "Index: {} voices (loaded in {:.2} s), search: {:.1} ms",
             index.doc_count(),
             loaded.as_secs_f32(),
             (started.elapsed() - loaded).as_secs_f64() * 1000.0
         );
         if hits.is_empty() {
-            println!("Keine Treffer (mindestens 5 Noten angeben).");
+            println!("No matches (give at least 5 notes).");
         }
         for (i, h) in hits.iter().enumerate() {
             println!(
-                "{:2}. {:5.1} %  {} – {} [{} · {}] ab Note {}\n     {}",
+                "{:2}. {:5.1} %  {} – {} [{} · {}] from note {}\n     {}",
                 i + 1,
                 h.score * 100.0,
                 if h.info.composer.is_empty() { "?" } else { &h.info.composer },
-                if h.info.title.is_empty() { "(ohne Titel)" } else { &h.info.title },
+                if h.info.title.is_empty() { "(untitled)" } else { &h.info.title },
                 h.info.part,
                 h.info.voice,
                 h.note_index + 1,
@@ -346,16 +347,16 @@ mod index {
         Ok(())
     }
 
-    /// Häufigste Fortsetzungen nach dem letzten Akkord, mit Beispielen.
+    /// Most frequent continuations after the last chord, with examples.
     fn chords(index_path: &Path, key: &str, chords: &[String]) -> Res {
         let index = AnyIndex::load(index_path)?;
-        let stats = index.chords().ok_or("Index ohne Akkordstatistik (vor KWIX04) – neu indizieren")?;
-        let key = parse_key(key).ok_or("Tonart nicht verstanden")?;
-        let seq: Vec<_> = chords.iter().map(|c| parse_chord(c, &key).ok_or(format!("Akkord {c}?"))).collect::<Result<_, _>>()?;
-        println!("{}: {} Dur-, {} Mollstücke mit Akkordfolge, {} Übergänge", key.name_de(), stats.scores[0], stats.scores[1], stats.transitions());
+        let stats = index.chords().ok_or("Index without chord statistics (before KWIX04) – re-index")?;
+        let key = parse_key(key).ok_or("Key not understood")?;
+        let seq: Vec<_> = chords.iter().map(|c| parse_chord(c, &key).ok_or(format!("Chord {c}?"))).collect::<Result<_, _>>()?;
+        println!("{}: {} major and {} minor pieces with a chord progression, {} transitions", key.name_de(), stats.scores[0], stats.scores[1], stats.transitions());
         let Some(last) = seq.last() else { return Ok(()) };
         let prev = Rel::of(last, &key);
-        println!("Nach {} ({}):", chord_name(last, &key), describe(last, &key).roman);
+        println!("After {} ({}):", chord_name(last, &key), describe(last, &key).roman);
         for (rel, f) in stats.top_after(key.minor, prev, 12) {
             let ch = rel.chord(&key);
             let ex: Vec<String> = f
@@ -365,11 +366,11 @@ mod index {
                 .filter_map(|e| {
                     index.doc(e.doc).map(|d| {
                         let comp = d.composer.split_whitespace().collect::<Vec<_>>().join(" ");
-                        format!("{} – {} T. {}", if comp.is_empty() { "?" } else { &comp }, d.title.trim(), e.bar)
+                        format!("{} – {} bar {}", if comp.is_empty() { "?" } else { &comp }, d.title.trim(), e.bar)
                     })
                 })
                 .collect();
-            println!("  {:5.1} % {:>6}× {:8} {:8} {}{}", f.share * 100.0, f.count, chord_name(&ch, &key), describe(&ch, &key).roman, if f.exact { "" } else { "(Grundakk.) " }, ex.join(" | "));
+            println!("  {:5.1} % {:>6}× {:8} {:8} {}{}", f.share * 100.0, f.count, chord_name(&ch, &key), describe(&ch, &key).roman, if f.exact { "" } else { "(basic chords) " }, ex.join(" | "));
         }
         Ok(())
     }

@@ -1,8 +1,8 @@
-// Bibliothek: leere „Standard“ beim Start, Ordner hinzufügen (Doppelte einmal),
-// Melodie- und Titelsuche, Partitur öffnen,
-// Stimmen wählen (Klick, Strg+Klick, „Alle Stimmen“), Anhören ↔ Stopp ab dem
-// Cursor (bis gestoppt wird), Zeitfenster in Schleife, Tempo für Anhören und
-// Übernehmen, Stimmen als Spuren übernehmen, Stöbern, Agent-Suche.
+// Library: empty "Standard" at startup, adding folders (duplicates once),
+// melody and title search, opening a score,
+// choosing voices (click, Ctrl+click, "All voices"), listen ↔ stop from the
+// cursor (until stopped), time window in a loop, tempo for listening and
+// importing, importing voices as tracks, browsing, agent search.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { startApp, makeTest, MOD, sleep } from "./harness.mjs";
 import { CHORAL_MELODY, PIECES, writePieces } from "./fixtures.mjs";
 
-/** Länge des Testchorals in Vierteln. */
+/** Length of the test chorale in quarters. */
 const CHORAL_QUARTERS = PIECES[0].parts[0].notes.reduce((a, n) => a + Number(n.split(":")[1] ?? 1), 0);
 
 let app;
@@ -26,7 +26,7 @@ const voices = () => app.eval(() => T.$$(".lib-voice").map((c) => (c.classList.c
 const playBtn = () => app.eval(() => T.$(".lib-selbar .btn")?.textContent ?? null);
 const takeBtn = () => app.eval(() => T.$(".lib-voices .btn.primary")?.textContent ?? null);
 const tempoVal = () => app.eval(() => Number(T.$(".lib-tempo-in").value));
-/** Punkt in der Notenrolle bei Viertel `q` (links, nicht gerollt). */
+/** Point in the piano roll at quarter `q` (left, not scrolled). */
 const rollAt = (q) => app.eval((q, total) => {
   T.$(".lib-roll-wrap").scrollLeft = 0;
   T.$(".lib-roll").scrollIntoView({ block: "center" });
@@ -48,17 +48,17 @@ async function openChoral() {
 }
 
 const libInfo = () => app.eval(() => window.__TAURI__.core.invoke("library_info"));
-/** Wartet, bis kein Auftrag der Bibliothek mehr läuft. */
+/** Waits until no library job is running any more. */
 const idle = (what, timeout = 60000) =>
   app.waitFor(async () => {
     const i = await window.__TAURI__.core.invoke("library_info");
     return !i.loading && !i.adding && !i.building && i.merging == null && !i.download ? i : null;
   }, { timeout, what });
 
-// Fehlerbericht: von Hand gestartet zeigte die Bibliothek einen Pfad, den man nicht ändern
-// konnte, und lud nur das zuletzt heruntergeladene Paket. Jetzt: genau eine aktive Bibliothek
-// (beim ersten Start die leere „Standard“), vom Programm gemerkt, ohne Pfadfeld.
-test("Beim Start ist „Standard“ aktiv – Name statt Pfad, leer zeigt den Katalog", async () => {
+// Bug report: when started by hand, the library showed a path that could not be changed
+// and loaded only the most recently downloaded package. Now: exactly one active library
+// (the empty "Standard" on first start), remembered by the program, without a path field.
+test("at startup “Standard” is active – name instead of path, empty shows the catalog", async () => {
   const info = await idle("Bibliothek geladen", 20000);
   assert.equal(info.id, "standard");
   assert.equal(info.name, "Standard");
@@ -70,7 +70,7 @@ test("Beim Start ist „Standard“ aktiv – Name statt Pfad, leer zeigt den Ka
   assert.equal(await app.eval(() => T.$$(".lib-bar .btn").some((b) => /Ordner indizieren|Index laden/.test(b.textContent))), false);
   await app.waitFor(() => !!T.$(".lib-catalog:not([hidden])"), { what: "Katalog öffnet sich bei leerer Bibliothek" });
   await app.eval(() => T.$(".lib-catalog-head .btn").click());
-  // Liste und Indexdatei liegen im Bibliotheksordner (Tests: eigener Ordner)
+  // List and index file are in the library folder (tests: own folder)
   const root = join(app.tmp, "bibliothek");
   const reg = JSON.parse(readFileSync(join(root, "bibliotheken.json"), "utf8"));
   assert.equal(reg.active, "standard");
@@ -78,7 +78,7 @@ test("Beim Start ist „Standard“ aktiv – Name statt Pfad, leer zeigt den Ka
   assert.ok(existsSync(join(root, "Indizes", reg.libraries[0].file)), "Indexdatei angelegt");
 });
 
-test("Hinzufügen: ein Ordner landet in „Standard“", async () => {
+test("adding: a folder lands in “Standard”", async () => {
   const dir = writePieces(join(app.tmp, "noten"));
   await app.clickOn(".lib-bar .btn", { text: "Hinzufügen" });
   await app.waitFor(() => !!T.$(".lib-addbox:not([hidden]) input"), { what: "Feld zum Hinzufügen" });
@@ -100,7 +100,7 @@ test("Hinzufügen: ein Ordner landet in „Standard“", async () => {
   assert.equal(reg.libraries[0].paths.length, 1, "Ordner vermerkt (für „Neu aufbauen“)");
 });
 
-test("Nochmal hinzufügen: schon Enthaltenes kommt nicht doppelt", async () => {
+test("adding again: what is already contained does not come twice", async () => {
   const dir = join(app.tmp, "noten");
   await app.mcp("add_to_library", { paths: [join(dir, "testchoral.musicxml"), dir] });
   const info = await idle("fertig");
@@ -108,7 +108,7 @@ test("Nochmal hinzufügen: schon Enthaltenes kommt nicht doppelt", async () => {
   assert.match(info.message, /Nichts Neues, 2 schon enthalten/);
 });
 
-test("Melodiesuche findet den Choral, Öffnen wählt die Treffer-Stimme", async () => {
+test("melody search finds the chorale, opening selects the matching voice", async () => {
   await openChoral();
   assert.deepEqual(await voices(), ["✓Sopran", "·Alt", "·Bass"]);
   assert.match(await playBtn(), /^Ab T\. 1 · Sopran$/);
@@ -116,7 +116,7 @@ test("Melodiesuche findet den Choral, Öffnen wählt die Treffer-Stimme", async 
   assert.equal(await app.eval(() => T.$(".lib-allvoices")?.classList.contains("on")), false);
 });
 
-test("Klick wählt eine Stimme, Strg+Klick mehrere, mindestens eine bleibt", async () => {
+test("click selects one voice, Ctrl+click several, at least one remains", async () => {
   await app.clickOn(".lib-voice", { text: "Bass" });
   assert.deepEqual(await voices(), ["·Sopran", "·Alt", "✓Bass"]);
   await app.clickOn(".lib-voice", { text: "Alt", mods: MOD.ctrl });
@@ -124,11 +124,11 @@ test("Klick wählt eine Stimme, Strg+Klick mehrere, mindestens eine bleibt", asy
   assert.match(await playBtn(), /· 2 Stimmen$/);
   assert.equal(await takeBtn(), "2 Stimmen als Spuren");
   await app.clickOn(".lib-voice", { text: "Alt", mods: MOD.ctrl });
-  await app.clickOn(".lib-voice", { text: "Bass", mods: MOD.ctrl }); // letzte bleibt
+  await app.clickOn(".lib-voice", { text: "Bass", mods: MOD.ctrl }); // last one stays
   assert.deepEqual(await voices(), ["·Sopran", "·Alt", "✓Bass"]);
 });
 
-test("Kästchen „Alle Stimmen“ wählt alle – und zurück zur Treffer-Stimme", async () => {
+test("checkbox “All voices” selects all – and back to the matching voice", async () => {
   await app.clickOn(".lib-allvoices");
   assert.deepEqual(await voices(), ["✓Sopran", "✓Alt", "✓Bass"]);
   assert.equal(await app.eval(() => T.$(".lib-allvoices").classList.contains("on")), true);
@@ -138,11 +138,11 @@ test("Kästchen „Alle Stimmen“ wählt alle – und zurück zur Treffer-Stimm
   assert.deepEqual(await voices(), ["✓Sopran", "·Alt", "·Bass"]);
 });
 
-test("Anhören wird zum Stopp-Knopf; Klick darauf stoppt", async () => {
+test("Listen becomes the stop button; clicking it stops", async () => {
   await app.clickOn(".lib-selbar .btn");
   assert.equal(await playBtn(), "Stopp");
   await app.waitFor(() => T.st.status.peek().previewing === true, { what: "Vorhören läuft" });
-  // die Abspiellinie läuft mit
+  // the playback line moves along
   await app.waitFor(() => !T.$(".lib-playhead").hidden && parseFloat(T.$(".lib-playhead").style.left) > 0, { what: "Abspiellinie" });
   await app.clickOn(".lib-selbar .btn");
   assert.match(await playBtn(), /^Ab T\. 1/);
@@ -150,7 +150,7 @@ test("Anhören wird zum Stopp-Knopf; Klick darauf stoppt", async () => {
   assert.equal(await app.eval(() => T.$(".lib-playhead").hidden), true);
 });
 
-test("Stimmen umwählen während der Wiedergabe: spielt an derselben Stelle weiter", async () => {
+test("switching voices during playback: continues playing at the same position", async () => {
   const head = () => app.eval(() => (T.$(".lib-playhead").hidden ? null : parseFloat(T.$(".lib-playhead").style.left)));
   await app.clickOn(".lib-selbar .btn");
   await app.waitFor(() => T.st.status.peek().previewing === true, { what: "Vorhören läuft" });
@@ -169,7 +169,7 @@ test("Stimmen umwählen während der Wiedergabe: spielt an derselben Stelle weit
   assert.match(await playBtn(), /^Ab T. 1 · Sopran$/);
 });
 
-test("Klick in die Notenrolle setzt den Cursor; abgespielt wird ab dort", async () => {
+test("click in the piano roll sets the cursor; playback starts from there", async () => {
   const bar = 4; // 4/4
   const [x, y] = await rollAt(bar + 0.5);
   await app.click(x, y);
@@ -177,7 +177,7 @@ test("Klick in die Notenrolle setzt den Cursor; abgespielt wird ab dort", async 
   const left = await app.eval(() => parseFloat(T.$(".lib-cursor").style.left));
   const expect = await app.eval((q, total) => (T.$(".lib-roll").clientWidth / total) * q, bar, CHORAL_QUARTERS);
   assert.ok(Math.abs(left - expect) < 2, `Cursor am Taktanfang: ${left} statt ${expect}`);
-  // Anfang der Abspiellinie = Cursor
+  // start of the playback line = cursor
   await app.clickOn(".lib-selbar .btn");
   const head = await app.waitFor(() => (!T.$(".lib-playhead").hidden ? parseFloat(T.$(".lib-playhead").style.left) : null), { what: "Abspiellinie" });
   assert.ok(head >= left - 1, `Linie startet am Cursor: ${head} ≥ ${left}`);
@@ -187,14 +187,14 @@ test("Klick in die Notenrolle setzt den Cursor; abgespielt wird ab dort", async 
   assert.match(await playBtn(), /^Ab T\. 1/);
 });
 
-test("Tempo: Regler ändert das Tempo, „Original“ setzt es zurück", async () => {
+test("tempo: slider changes the tempo, “Original” resets it", async () => {
   const orig = await tempoVal();
   assert.ok(orig > 0);
   assert.equal(await app.eval(() => T.$(".lib-tempo-orig").hidden), true);
   await app.clickOn(".lib-tempo .btn", { text: "+" });
   assert.equal(await tempoVal(), Math.round(orig * 1.1));
   assert.equal(await app.eval(() => T.$(".lib-tempo").classList.contains("changed")), true);
-  // während es klingt, gilt ein neues Tempo sofort (es läuft weiter)
+  // while it sounds, a new tempo applies immediately (it keeps running)
   await app.clickOn(".lib-selbar .btn");
   await app.waitFor(() => T.st.status.peek().previewing === true, { what: "Vorhören läuft" });
   await app.clickOn(".lib-tempo .btn", { text: "−" });
@@ -205,14 +205,14 @@ test("Tempo: Regler ändert das Tempo, „Original“ setzt es zurück", async (
   assert.equal(await app.eval(() => T.$(".lib-tempo-orig").hidden), true);
 });
 
-test("Zeitfenster markieren: Knopf heißt „Markierung“, sie läuft in Schleife, bis gestoppt wird", async () => {
+test("mark a time window: button reads “Selection”, it loops until stopped", async () => {
   const r = await app.eval(() => {
     T.$(".lib-roll-wrap").scrollLeft = 0;
     T.$(".lib-roll").scrollIntoView({ block: "center" });
     const b = T.$(".lib-roll").getBoundingClientRect();
     return { x: b.x, y: b.y + b.height / 2, w: b.width };
   });
-  // Die Notenrolle zeigt die ganze Partitur über ihre Breite
+  // The piano roll shows the whole score across its width
   const qw = r.w / CHORAL_QUARTERS;
   await app.drag([r.x + qw * 0.1, r.y], [r.x + qw * 1.1, r.y]);
   assert.match(await app.eval(() => T.$(".lib-selinfo").textContent), /^Markiert: T\. 1–1 · 1 Viertel$/);
@@ -221,7 +221,7 @@ test("Zeitfenster markieren: Knopf heißt „Markierung“, sie läuft in Schlei
   await app.clickOn(".lib-selbar .btn");
   assert.equal(await playBtn(), "Stopp");
   await app.waitFor(() => T.st.status.peek().previewing === true, { what: "Vorhören läuft" });
-  // ein Viertel ist längst vorbei – es klingt aber weiter
+  // a quarter is long past – but it keeps sounding
   await app.eval(() => T.sleep(2500));
   assert.equal(await app.eval(() => T.st.status.peek().previewing), true, "Schleife läuft weiter");
   assert.equal(await playBtn(), "Stopp");
@@ -230,7 +230,7 @@ test("Zeitfenster markieren: Knopf heißt „Markierung“, sie läuft in Schlei
   await app.waitFor(() => T.st.status.peek().previewing === false, { what: "Vorhören beendet" });
 });
 
-test("Zeitleiste: Taktzahlen, Strg+Mausrad zoomt, Ziehen wandert in der Zeit, Klick setzt den Cursor", async () => {
+test("timeline: bar numbers, Ctrl+mouse wheel zooms, dragging pans in time, click sets the cursor", async () => {
   const geo = () => app.eval(() => {
     const w = T.$(".lib-roll-wrap");
     const r = T.$(".lib-ruler").getBoundingClientRect();
@@ -243,8 +243,8 @@ test("Zeitleiste: Taktzahlen, Strg+Mausrad zoomt, Ziehen wandert in der Zeit, Kl
   let g = await geo();
   assert.equal(g.h, 22, "Zeitleiste über der Rolle");
   assert.ok(g.sw <= g.cw + 1, "kurzes Stück füllt die Breite");
-  // Strg+Mausrad über der Rolle: hineinzoomen – erst wenn das Fenster nach dem
-  // Scrollen ruhig steht; ein zu früher Stoß wird einmal wiederholt
+  // Ctrl+mouse wheel over the roll: zoom in – only once the window is steady after
+  // scrolling; a push that comes too early is repeated once
   await app.waitFor(async () => {
     const a = T.$(".lib-ruler").getBoundingClientRect().y;
     await T.sleep(120);
@@ -266,24 +266,24 @@ test("Zeitleiste: Taktzahlen, Strg+Mausrad zoomt, Ziehen wandert in der Zeit, Kl
   }, g.x + 40, g.y + 60);
   g = await geo();
   assert.ok(g.sw > g.cw * 1.5, `hineingezoomt: ${g.sw} > 1,5 × ${g.cw} (unter der Maus: ${under})`);
-  // Ziehen auf der Zeitleiste: die Zeit wandert mit der Maus
+  // Dragging on the timeline: the time moves with the mouse
   const before = g.left;
   await app.drag([g.x + 300, g.y], [g.x + 150, g.y], { steps: 6 });
   g = await geo();
   assert.ok(Math.abs(g.left - before - 150) < 12, `150 px weiter: ${before} → ${g.left}`);
-  // Mausrad ohne Strg: blättert ebenfalls in der Zeit
+  // Mouse wheel without Ctrl: scrolls through time as well
   await app.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: g.x + 40, y: g.y + 60, deltaX: 0, deltaY: 120 });
   await sleep(150);
   const after = (await geo()).left;
   assert.ok(after > g.left + 50, `Mausrad blättert: ${g.left} → ${after}`);
-  // Klick auf die Zeitleiste setzt den Cursor dorthin – auf den Anfang der Viertel
+  // Click on the timeline puts the cursor there – on the start of the quarter
   g = await geo();
   await app.click(g.x + 100, g.y);
   const cur = await app.eval(() => parseFloat(T.$(".lib-cursor").style.left));
   const qw = g.sw / CHORAL_QUARTERS;
   const at = g.left + 100;
   assert.ok(cur <= at + 1 && cur > at - qw - 1, `Cursor an der Klickstelle: ${cur} (Klick bei ${at}, Viertel ${qw.toFixed(0)} px)`);
-  // die Taktzahlen der Zeitleiste stehen im gezoomten Ausschnitt (Bild nicht leer)
+  // the timeline's bar numbers are in the zoomed section (image not empty)
   const painted = await app.eval(() => {
     const c = T.$(".lib-ruler");
     const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
@@ -296,7 +296,7 @@ test("Zeitleiste: Taktzahlen, Strg+Mausrad zoomt, Ziehen wandert in der Zeit, Kl
     return { n, max, w: c.width, h: c.height, sl: T.$(".lib-roll-wrap").scrollLeft, sw: T.$(".lib-roll-wrap").scrollWidth };
   });
   assert.ok(painted.n > 3 && painted.max > 120, `Taktzahlen gezeichnet: ${JSON.stringify(painted)}`);
-  // wieder ganz herauszoomen (die folgenden Tests rechnen mit der ganzen Breite)
+  // zoom all the way out again (the following tests count on the full width)
   for (let i = 0; i < 12; i++) {
     await app.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: g.x + 40, y: g.y + 60, deltaX: 0, deltaY: 400, modifiers: 2 });
   }
@@ -308,7 +308,7 @@ test("Zeitleiste: Taktzahlen, Strg+Mausrad zoomt, Ziehen wandert in der Zeit, Kl
   await app.click(x0, y0);
 });
 
-test("Abschnitt als Spur: nur der markierte Ausschnitt, Takte im Namen", async () => {
+test("section as track: only the selected excerpt, bars in the name", async () => {
   const n0 = await app.eval(() => T.st.snapshot.peek().project.tracks.length);
   await app.clickOn(".lib-voices .btn.primary");
   const t = await app.waitFor((n0) => {
@@ -320,7 +320,7 @@ test("Abschnitt als Spur: nur der markierte Ausschnitt, Takte im Namen", async (
   await app.clickOn(".lib-selbar .btn.ghost[title='Markierung aufheben']");
 });
 
-test("Übernehmen im gewählten Tempo: auf das Projekttempo umgerechnet", async () => {
+test("adopting at the chosen tempo: converted to the project tempo", async () => {
   await app.eval(() => T.st.act(window.__TAURI__.core.invoke("project_new")));
   const bpm = await app.eval(() => T.st.snapshot.peek().project.tempoBpm);
   const take = async () => {
@@ -332,11 +332,11 @@ test("Übernehmen im gewählten Tempo: auf das Projekttempo umgerechnet", async 
     }, { what: "neue Spur" }, n0);
     return t.clips[0].source.notes.slice(0, 2).map((n) => [n.startBeats, n.lengthBeats]);
   };
-  // „Projekt“: ein Viertel = ein Schlag
+  // "Project": one quarter = one beat
   await app.clickOn(".lib-tempo-proj");
   assert.equal(await tempoVal(), bpm);
   assert.deepEqual(await take(), [[0, 1], [1, 1]]);
-  // halb so schnell wie das Projekt: jedes Viertel zwei Schläge
+  // half as fast as the project: each quarter two beats
   await app.eval((v) => {
     const i = T.$(".lib-tempo-in");
     i.value = String(v);
@@ -347,7 +347,7 @@ test("Übernehmen im gewählten Tempo: auf das Projekttempo umgerechnet", async 
   await app.eval(() => T.st.act(window.__TAURI__.core.invoke("project_new")));
 });
 
-test("Mehrere Stimmen als Spuren: je Stimme eine Spur, ein Undo-Schritt", async () => {
+test("several voices as tracks: one track per voice, one undo step", async () => {
   await app.eval(() => T.st.act(window.__TAURI__.core.invoke("project_new")));
   await app.clickOn(".lib-voice", { text: "Alt", mods: MOD.ctrl });
   await app.clickOn(".lib-voices .btn.primary");
@@ -361,7 +361,7 @@ test("Mehrere Stimmen als Spuren: je Stimme eine Spur, ein Undo-Schritt", async 
   assert.equal(await app.eval(() => T.st.snapshot.peek().project.tracks.length), 0);
 });
 
-test("Titelsuche findet das Duett", async () => {
+test("title search finds the duet", async () => {
   const hits = await app.eval(async () => {
     T.$(".lib-search input:not(.mono)").value = "Duett";
     T.$(".lib-search input.mono").value = "";
@@ -372,7 +372,7 @@ test("Titelsuche findet das Duett", async () => {
   assert.ok(hits.every((h) => h.includes("Duett")), JSON.stringify(hits));
 });
 
-test("Stöbern zeigt die Stücke im Baum", async () => {
+test("browsing shows the pieces in the tree", async () => {
   const shown = await app.eval(async () => {
     T.$$(".lib-mode .seg-btn").find((b) => b.textContent.includes("Stöbern")).click();
     await T.waitFor(() => T.$(".tree-head"));
@@ -382,8 +382,8 @@ test("Stöbern zeigt die Stücke im Baum", async () => {
   await app.eval(() => T.$$(".lib-mode .seg-btn").find((b) => b.textContent.includes("Suchen")).click());
 });
 
-// Fehlerbericht: im kleinen Fenster war das Ende des Download-Katalogs nicht erreichbar.
-test("Download-Katalog im kleinen Fenster: endet im Fenster und rollt bis zur letzten Karte", async () => {
+// Bug report: in the small window the end of the download catalog was unreachable.
+test("download catalog in a small window: ends within the window and scrolls to the last card", async () => {
   await app.send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 640, deviceScaleFactor: 1, mobile: false });
   try {
     await app.eval(() => {
@@ -409,14 +409,14 @@ test("Download-Katalog im kleinen Fenster: endet im Fenster und rollt bis zur le
   }
 });
 
-test("Agent: search_melody findet den Choral – auch transponiert", async () => {
-  // Sopran-Anfang eine Quarte höher: die Suche ist unabhängig von der Tonart
+test("agent: search_melody finds the chorale – also transposed", async () => {
+  // Soprano start a fourth higher: the search is independent of the key
   const midi = [60, 62, 64, 65, 67, 67, 69, 69, 69, 69, 67].map((m) => m + 5);
   const dur = [1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 4];
   const r = await app.mcp("search_melody", { notes: midi.map((m, i) => ({ midi: m, duration: dur[i] })) });
   assert.match(JSON.stringify(r), /Testchoral/);
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });

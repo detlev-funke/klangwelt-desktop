@@ -1,6 +1,6 @@
-// Bearbeiten über Spuren: markierten Zeitbereich mit Entf aus allen Spuren
-// löschen (alles danach rückt auf), markierte Noten mit ↑/↓ transponieren,
-// Kontextmenü „Am Takt ausrichten“ – je ein Rückgängig-Schritt.
+// Editing across tracks: delete the selected time range from all tracks with Delete
+// (everything after it moves up), transpose selected notes with ↑/↓,
+// context menu "Quantize" – one undo step each.
 import { before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
@@ -26,7 +26,7 @@ beforeEach(async () => {
 
 const notes = (spec) => spec.map(([pitch, s, l]) => ({ pitch, startBeats: s, lengthBeats: l, velocity: 100 }));
 
-/** Instrumentspur mit Clips: [{ start, len, notes: [[Ton, Start, Länge]] }]; liefert die Spur-ID. */
+/** Instrument track with clips: [{ start, len, notes: [[pitch, start, length]] }]; returns the track id. */
 async function track(name, clips, view = "compact") {
   return app.eval(async (name, clips, view) => {
     await T.st.run({ type: "addTrack", track: { id: 0, name, kind: "instrument" } });
@@ -40,7 +40,7 @@ async function track(name, clips, view = "compact") {
   }, name, clips, view);
 }
 
-/** Clips einer Spur: [Start, Länge, ["Ton@Start/Länge", …]]. */
+/** Clips of a track: [start, length, ["pitch@start/length", …]]. */
 const clipsOf = (id) => app.eval((id) => T.st.snapshot.peek().project.tracks.find((t) => t.id === id).clips
   .slice().sort((a, b) => a.startBeats - b.startBeats)
   .map((c) => [c.startBeats, c.source.type === "notes" ? c.source.lengthBeats : c.source.durationSecs,
@@ -49,14 +49,14 @@ const undoLabel = () => app.eval(() => T.st.snapshot.peek().undoLabel);
 const loopRange = () => app.eval(() => T.st.snapshot.peek().engine.loopRange);
 const undo = () => app.eval(() => T.st.act(window.__TAURI__.core.invoke("undo")));
 
-/** Zeitbereich im Lineal mit Umschalt+Ziehen markieren. */
+/** Selects a time range in the ruler with Shift+drag. */
 async function markRange(a, b) {
   const g = geoFns(await noteGeo(app, await app.eval(() => T.st.snapshot.peek().project.tracks[0].id)));
   await app.drag([g.X(a) + 1, g.rulerY], [g.X(b) + 1, g.rulerY], { mods: MOD.shift });
   await app.waitFor(() => !!T.st.snapshot.peek().engine.loopRange, { what: "markierter Bereich" });
 }
 
-// ------------------------------------------------------------------ Zeitbereich
+// ------------------------------------------------------------------ Time range
 
 async function twoTracks() {
   const a = await track("A", [{ start: 0, len: 8, notes: notes([[60, 0, 1], [62, 2.5, 1], [64, 3.5, 2], [65, 5, 1], [67, 6, 1]]) }]);
@@ -64,10 +64,10 @@ async function twoTracks() {
   return { a, b };
 }
 
-test("Entf löscht den markierten Zeitbereich aus allen Spuren – alles danach rückt auf, ein Rückgängig-Schritt", async () => {
+test("Delete removes the selected time range from all tracks – everything after it moves up, one undo step", async () => {
   const { a, b } = await twoTracks();
   const before = [await clipsOf(a), await clipsOf(b)];
-  // vorher gewählter Clip: das spätere Markieren hat Vorrang
+  // previously selected clip: the later range selection takes precedence
   const gb = await noteGeo(app, b);
   await app.click(gb.cx + 8.5 * gb.ppb - gb.scrollX, gb.rowY + 12);
   await app.waitFor(() => T.st.selection.peek()?.clipId != null, { what: "Clip gewählt" });
@@ -75,9 +75,9 @@ test("Entf löscht den markierten Zeitbereich aus allen Spuren – alles danach 
   assert.deepEqual(await loopRange(), [2, 5]);
   await app.key("Delete");
   await app.waitFor(() => T.st.snapshot.peek().undoLabel?.startsWith("Zeitbereich löschen"), { what: "Bereich gelöscht" });
-  // A: Clip 0–8 → 0–5; 62 (im Bereich) weg, 64 ragt hinaus (Rest 0,5 ab Schlag 2), 65/67 rücken um 3 vor
+  // A: clip 0–8 → 0–5; 62 (in the range) gone, 64 extends beyond (remainder 0.5 from beat 2), 65/67 move up by 3
   assert.deepEqual(await clipsOf(a), [[0, 5, ["60@0/1", "64@2/0.5", "65@2/1", "67@3/1"]]]);
-  // B: Clip im Bereich ist weg, Clip dahinter rückt von 8 auf 5
+  // B: clip in the range is gone, clip behind it moves from 8 to 5
   assert.deepEqual(await clipsOf(b), [[5, 4, ["52@1/1"]]]);
   assert.equal(await undoLabel(), "Zeitbereich löschen (Takt 1.3 – 2.2)");
   assert.equal(await loopRange(), null, "Markierung ist aufgehoben");
@@ -86,11 +86,11 @@ test("Entf löscht den markierten Zeitbereich aus allen Spuren – alles danach 
   assert.deepEqual([await clipsOf(a), await clipsOf(b)], before);
 });
 
-test("Wird nach dem Markieren ein Clip gewählt, löscht Entf den Clip – der Bereich bleibt", async () => {
+test("if a clip is selected after marking, Delete deletes the clip – the range stays", async () => {
   const { a, b } = await twoTracks();
   await markRange(2, 5);
   const g = await noteGeo(app, b);
-  // Clip ab Schlag 8 in Spur B anklicken (Kopfzeile)
+  // click the clip from beat 8 in track B (header row)
   await app.click(g.cx + 8.5 * g.ppb - g.scrollX, g.rowY + 12);
   await app.waitFor(() => T.st.selection.peek()?.clipId != null, { what: "Clip gewählt" });
   await app.key("Delete");
@@ -99,7 +99,7 @@ test("Wird nach dem Markieren ein Clip gewählt, löscht Entf den Clip – der B
   assert.deepEqual(await loopRange(), [2, 5]);
 });
 
-test("Rechtsklick in den markierten Bereich: Menü „Zeitbereich löschen“", async () => {
+test("right-click in the selected range: menu “Delete time range”", async () => {
   const { a } = await twoTracks();
   await markRange(4, 8);
   const g = await noteGeo(app, a);
@@ -111,18 +111,18 @@ test("Rechtsklick in den markierten Bereich: Menü „Zeitbereich löschen“", 
   assert.deepEqual(await clipsOf(a), [[0, 4, ["60@0/1", "62@2.5/1", "64@3.5/0.5"]]]);
 });
 
-test("Audio-Clips über den Bereich werden geschnitten (neue Audiodatei), Rückgängig holt das Original", async () => {
+test("audio clips across the range are cut (new audio file), undo brings back the original", async () => {
   const file = join(app.tmp, "ton.wav");
   const sr = 8000;
   writeWav(file, [Array.from({ length: sr * 2 }, (_, i) => 0.4 * Math.sin((2 * Math.PI * 220 * i) / sr))], sr);
-  // 2 s bei 120 BPM (Originaltempo) = 4 Schläge, ab Schlag 2
+  // 2 s at 120 BPM (original tempo) = 4 beats, from beat 2
   const r = await app.eval((p) => window.__TAURI__.core.invoke("audio_import", { paths: [p], trackId: null, startBeats: 2 }), file);
   await app.eval((s) => (T.st.snapshot.value = s), r.snapshot);
   const id = r.imported[0].trackId;
   const original = await clipsOf(id);
   assert.deepEqual(original.map((c) => [c[0], c[1]]), [[2, 2]]);
   await app.eval(() => T.st.act(window.__TAURI__.core.invoke("set_loop_range", { range: [3, 4] })));
-  await app.key("Delete"); // nichts gewählt: Entf gilt dem Bereich
+  await app.key("Delete"); // nothing selected: Delete applies to the range
   await app.waitFor(() => T.st.snapshot.peek().undoLabel?.startsWith("Zeitbereich löschen"), { what: "Bereich gelöscht" });
   const [cut] = await clipsOf(id);
   assert.equal(cut[0], 2, "Clip bleibt an seinem Anfang");
@@ -134,7 +134,7 @@ test("Audio-Clips über den Bereich werden geschnitten (neue Audiodatei), Rückg
   assert.deepEqual(await clipsOf(id), original);
 });
 
-test("Agent: delete_range löscht ebenso", async () => {
+test("agent: delete_range deletes likewise", async () => {
   const { a, b } = await twoTracks();
   const r = await app.mcp("delete_range", { startBeats: 2, endBeats: 5 });
   assert.equal(r.ok, true);
@@ -143,9 +143,9 @@ test("Agent: delete_range löscht ebenso", async () => {
   assert.equal((await clipsOf(a))[0][1], 5);
 });
 
-// ------------------------------------------------------------------ Pfeiltasten
+// ------------------------------------------------------------------ Arrow keys
 
-test("↑/↓ verschieben markierte Noten um Halbtöne (Umschalt: Oktave), je Druck ein Rückgängig-Schritt", async () => {
+test("↑/↓ move selected notes by semitones (Shift: octave), one undo step per press", async () => {
   const id = await track("T", [{ start: 4, len: 4, notes: notes([[60, 0, 0.9], [64, 1, 0.9], [67, 2, 0.9]]) }], "notes");
   const g = geoFns(await noteGeo(app, id));
   await app.click(g.X(4.3), g.Y(60));
@@ -163,13 +163,13 @@ test("↑/↓ verschieben markierte Noten um Halbtöne (Umschalt: Oktave), je Dr
   assert.deepEqual((await clipsOf(id))[0][2], ["60@0/0.9", "64@1/0.9", "67@2/0.9"]);
 });
 
-test("↑/↓ greifen nicht, solange ein Eingabefeld den Fokus hat", async () => {
+test("↑/↓ do not act while an input field has focus", async () => {
   const id = await track("T", [{ start: 0, len: 4, notes: notes([[60, 0, 1]]) }], "notes");
   const g = geoFns(await noteGeo(app, id));
   await app.click(g.X(0.3), g.Y(60));
   assert.deepEqual(await app.eval(() => T.pr.noteSel.peek()?.keys), ["60@0"]);
   await app.eval(() => T.$(".track-row input.text").focus());
-  // Taste ohne vorheriges Wegnehmen des Fokus (app.key nimmt ihn weg)
+  // key without removing focus beforehand (app.key removes it)
   for (const type of ["rawKeyDown", "keyUp"]) {
     await app.send("Input.dispatchKeyEvent", { type, key: "ArrowUp", code: "ArrowUp", windowsVirtualKeyCode: 38, nativeVirtualKeyCode: 38 });
   }
@@ -180,16 +180,16 @@ test("↑/↓ greifen nicht, solange ein Eingabefeld den Fokus hat", async () =>
   assert.deepEqual((await clipsOf(id))[0][2], ["61@0/1"]);
 });
 
-// ------------------------------------------------------------------ Am Takt ausrichten
+// ------------------------------------------------------------------ Quantize
 
 async function offGrid() {
   const id = await track("Q", [{ start: 4, len: 4, notes: notes([[60, 0.1, 0.8], [64, 1.15, 0.3], [67, 1.6, 1.1]]) }], "notes");
   return { id, g: geoFns(await noteGeo(app, id)) };
 }
 
-test("Kontextmenü „Am Takt ausrichten“: Raster 1/8 setzt die Anfänge, die Auswahl bleibt", async () => {
+test("context menu “Quantize”: grid 1/8 sets the starts, the selection stays", async () => {
   const { id, g } = await offGrid();
-  await app.drag([g.X(4.05), g.Y(68)], [g.X(6.9), g.Y(59)]); // alle drei im Rahmen
+  await app.drag([g.X(4.05), g.Y(68)], [g.X(6.9), g.Y(59)]); // all three inside the frame
   assert.equal(await app.eval(() => T.pr.noteSel.peek()?.keys.length), 3);
   await app.click(g.X(5.25), g.Y(64), { button: "right" });
   const heading = await app.waitFor(() => T.$(".ctx-menu .menu-title")?.textContent, { what: "Kontextmenü" });
@@ -205,18 +205,18 @@ test("Kontextmenü „Am Takt ausrichten“: Raster 1/8 setzt die Anfänge, die 
   assert.deepEqual((await clipsOf(id))[0][2], ["60@0.1/0.8", "64@1.15/0.3", "67@1.6/1.1"]);
 });
 
-test("„Anfang und Länge“ mit 1/4 richtet auch die Enden aus; Rechtsklick auf eine freie Note wählt nur sie", async () => {
+test("“Start and length” with 1/4 also aligns the ends; right-click on an unselected note selects only it", async () => {
   const { id, g } = await offGrid();
   await app.click(g.X(5.7), g.Y(67), { button: "right" });
   await app.waitFor(() => T.$(".ctx-menu .menu-title")?.textContent === "1 Note markiert", { what: "Menü für eine Note" });
   assert.deepEqual(await app.eval(() => T.pr.noteSel.peek().keys), ["67@1.6"]);
   await app.clickOn(".ctx-menu [data-act=raster-4-laenge]");
   await app.waitFor(() => T.st.snapshot.peek().undoLabel?.includes("Anfang und Länge"), { what: "ausgerichtet" });
-  // 67: Projekt 5,6 → 6 (relativ 2), Ende 6,7 → 7 → Länge 1; die anderen bleiben
+  // 67: project 5.6 → 6 (relative 2), end 6.7 → 7 → length 1; the others stay
   assert.deepEqual((await clipsOf(id))[0][2], ["60@0.1/0.8", "64@1.15/0.3", "67@2/1"]);
 });
 
-test("Kontextmenü: Transponieren und Löschen", async () => {
+test("context menu: transpose and delete", async () => {
   const { id, g } = await offGrid();
   await app.click(g.X(4.5), g.Y(60), { button: "right" });
   await app.clickOn(".ctx-menu [data-act='transponieren+1']");
@@ -226,7 +226,7 @@ test("Kontextmenü: Transponieren und Löschen", async () => {
   assert.deepEqual((await clipsOf(id))[0][2], ["64@1.15/0.3", "67@1.6/1.1"]);
 });
 
-test("Agent: quantize_notes richtet am Raster aus", async () => {
+test("agent: quantize_notes aligns to the grid", async () => {
   const { id } = await offGrid();
   const clipId = await app.eval((id) => T.st.snapshot.peek().project.tracks.find((t) => t.id === id).clips[0].id, id);
   const r = await app.mcp("quantize_notes", { trackId: id, clipId, grid: 0.25, lengths: false });
@@ -235,6 +235,6 @@ test("Agent: quantize_notes richtet am Raster aus", async () => {
   assert.deepEqual((await clipsOf(id))[0][2], ["60@0/0.8", "64@1.25/0.3", "67@1.5/1.1"]);
 });
 
-test("keine Fehler im Fenster", () => {
+test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });
