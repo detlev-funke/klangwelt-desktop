@@ -66,7 +66,8 @@ test("Umzug: „Standard“ entsteht aus den alten Indizes, Kostprobe wird eigen
   const info = await idle("Bibliothek eingerichtet", 30000);
   assert.equal(info.name, "Standard");
   assert.equal(info.scores, 3, "PDMX (2) + Eigene (1)");
-  assert.match(info.message, /Bibliotheken eingerichtet: „Standard“ mit 3 Partituren \(aus (PDMX, Eigene|Eigene, PDMX)\); eigene Bibliotheken: PDMX – Kostprobe/);
+  // made at start, before the UI hands its language to the core – so in English (the pack name is an identifier)
+  assert.match(info.message, /Libraries set up: "Standard" with 3 scores \(from (PDMX, Eigene|Eigene, PDMX)\); separate libraries: PDMX – Kostprobe/);
   const reg = registry();
   assert.deepEqual(reg.libraries.map((l) => l.name), ["Standard", "PDMX – Kostprobe"]);
   const std = reg.libraries[0];

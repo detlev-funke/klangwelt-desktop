@@ -146,7 +146,7 @@ test("Agent: Stimmung und Brüche in analyze_harmony, write_chords mit mode einf
   await setup();
   const a = await app.mcp("analyze_harmony", { key: "C-Dur" });
   const fis = a.akkorde.find((c) => c.name === "Fis");
-  assert.equal(fis.bruch, "tonartfremd");
+  assert.equal(fis.bruch, "out of key"); // agent-facing, untranslated key
   assert.ok(a.akkorde.every((c) => typeof c.stimmung === "string"));
   await app.mcp("write_chords", { chords: ["d", "G7"], key: "C-Dur", beatsPerChord: 4, startBeats: 16, mode: "einfuegen" });
   assert.equal(await melodyNote(), 24, "Melodie um zwei Takte nach hinten");

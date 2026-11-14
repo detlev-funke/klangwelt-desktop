@@ -180,8 +180,10 @@ test("a-Moll: phrygischer Halbschluss über iv⁶", async () => {
 
 test("Agent: suggest_chords liefert Stimmung und Wege zum Schluss", async () => {
   const r = await app.mcp("suggest_chords", { key: "C-Dur", chords: ["C", "a"] });
-  assert.ok(r.vorschlaege.every((v) => ["lösend", "spannend", "überraschend", "hell", "dunkel"].includes(v.stimmung)));
+  // agent-facing values are not translated – the keys, English since the switch to English keys
+  assert.ok(r.vorschlaege.every((v) => ["resolving", "tense", "surprising", "bright", "dark"].includes(v.stimmung)));
   const ziele = r.wegeZumSchluss.map((w) => w.schluss);
+  // cadence labels are translated (the UI under test is German); mood values above are keys
   for (const z of ["Ganzschluss", "Plagalschluss", "Halbschluss", "Trugschluss"]) assert.ok(ziele.includes(z), z);
   for (const w of r.wegeZumSchluss) assert.equal(w.stimmungen.length, w.akkorde.length);
 });

@@ -16,6 +16,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
 
+klang-i18n = { path = "klangwelt/crates/klang-i18n" }
 klang-dsp = { path = "klangwelt/crates/klang-dsp" }
 klang-core = { path = "klangwelt/crates/klang-core" }
 klang-music = { path = "klangwelt/crates/klang-music" }

@@ -296,8 +296,10 @@ async function connectPage(port, timeout) {
 
 /** Startet eine abgeschottete App-Instanz und wartet, bis die Oberfläche steht.
  *  `tmp`: Ordner einer gestoppten Instanz (Neustart mit Bibliothek und Einstellungen);
- *  `prepare(bibliothek)`: legt vor dem Start etwas in ihren Bibliotheksordner. */
-export async function startApp({ tmp = mkdtempSync(join(tmpdir(), "klangwelt-e2e-")), prepare } = {}) {
+ *  `prepare(bibliothek)`: legt vor dem Start etwas in ihren Bibliotheksordner.
+ *  `languages`: the WebView's preferred languages (navigator.languages) – German by
+ *  default, because the tests check German texts (language: klangwelt/ui/src/i18n.ts). */
+export async function startApp({ tmp = mkdtempSync(join(tmpdir(), "klangwelt-e2e-")), prepare, languages = "de-DE,de" } = {}) {
   const exe = process.env.KLANGWELT_EXE ?? join(ROOT, "target", "debug", "klangwelt.exe");
   if (!existsSync(exe)) throw new Error(`Programm fehlt: ${exe} – erst „cargo build -p klangwelt“ (vorher „npm run build“ in ui/)`);
   prepare?.(join(tmp, "bibliothek"));
@@ -308,7 +310,7 @@ export async function startApp({ tmp = mkdtempSync(join(tmpdir(), "klangwelt-e2e
     KLANGWELT_BIBLIOTHEK: join(tmp, "bibliothek"),
     KLANGWELT_MCP_PORT: String(mcpPort),
     WEBVIEW2_USER_DATA_FOLDER: join(tmp, "webview"),
-    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `${BACKGROUND_ENV.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS} --remote-debugging-port=${cdpPort}`,
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `${BACKGROUND_ENV.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS} --remote-debugging-port=${cdpPort} --accept-lang=${languages}`,
   };
   const child = spawn(exe, [], { env, stdio: "ignore", windowsHide: false });
   let ws;

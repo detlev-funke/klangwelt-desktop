@@ -21,6 +21,7 @@ tauri = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 klang-core = { workspace = true }
+klang-i18n = { workspace = true }
 klang-dsp = { workspace = true }
 klang-music = { workspace = true }
 klang-engine = { workspace = true }

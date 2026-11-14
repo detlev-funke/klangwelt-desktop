@@ -13,7 +13,7 @@ included as a Git submodule in the `klangwelt/` folder.
 **Tech:** Rust (core, DSP, audio engine, library) · Tauri 2 (window/WebView) ·
 TypeScript without runtime libraries (interface).
 
-The app's interface is currently in German; English and other languages are in progress.
+The app speaks English, German, French, Italian, Spanish, Dutch and Polish – it follows the system language, and the gear menu switches it.
 
 ## Quick start
 
@@ -249,7 +249,7 @@ Rendering uses the same mix as playback, at 48 kHz stereo.
   opens the window in any case – even if it was closed. F1 on another
   element pins that element's text; F1 on the same one (or a click on the
   lock) unpins it. It starts as a floating window and, like any
-  other, can be docked or shown and hidden via "Window ▾".
+  other, can be docked or shown and hidden via "Windows ▾".
 - **Tooltips:** Every control has one – on itself or on its frame
   (an e2e test checks this).
 
@@ -258,7 +258,7 @@ Rendering uses the same mix as playback, at 48 kHz stereo.
 Tracks, Clip, Analysis, Sound, Rhythm, Library and Agent are separate windows.
 Default: Tracks at the top, Clip/Analysis/Sound/Rhythm/Library below as tabs,
 Agent on the right. You open a new window (e.g. Rhythm) in a
-saved layout via "Window ▾".
+saved layout via "Windows ▾".
 
 | Window | Action |
 |---|---|
@@ -268,8 +268,8 @@ saved layout via "Window ▾".
 | Drop a tab anywhere else | floating window (resize by dragging its edges/corners) |
 | Drag the empty area of the tab bar | move the whole group or floating window |
 | Drag the line between windows | resize (double-click: equal sizes) |
-| × on the tab / middle mouse button | close the window – "Window ▾" reopens it in its old place |
-| "Window ▾" → Reset layout | default arrangement |
+| × on the tab / middle mouse button | close the window – "Windows ▾" reopens it in its old place |
+| "Windows ▾" → Reset layout | default arrangement |
 | Esc while dragging | cancel |
 
 The layout is saved. Narrow windows arrange their content in a single column.

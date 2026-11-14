@@ -84,7 +84,7 @@ pub fn start(app: AppHandle) {
         }
         Err(e) => {
             eprintln!("MCP-Server konnte nicht starten: {e}");
-            link.error = Some(format!("Port {port} belegt oder nicht verfügbar: {e}"));
+            link.error = Some(klang_i18n::tr!("Port {port} is in use or not available: {error}", port = port, error = e));
         }
     }
 }

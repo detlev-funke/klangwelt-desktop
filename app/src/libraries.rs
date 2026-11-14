@@ -9,8 +9,9 @@
 //! Beim ersten Start mit dieser Version entsteht „Standard“ aus den alten
 //! Indizes je Paketordner ([`migrate`]), ohne eine Partitur neu zu lesen.
 
-use crate::library::{covers, default_root, emit_info, pack_folder, pack_for_folder, pack_name, pdmx_has_meta};
+use crate::library::{covers, default_root, emit_info, pack_folder, pack_for_folder, pack_name, pack_name_untranslated, pdmx_has_meta};
 use crate::state::{lock, AppState, CmdResult, Library};
+use klang_i18n::{tr, trn};
 use klang_music::diskindex::{extra_path, merge, AnyIndex, IndexWriter, MergeStats};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -82,9 +83,9 @@ fn write(root: &Path, reg: &Registry) -> Result<(), String> {
 
 /// Liste lesen, ändern und speichern (unter der Sperre).
 fn update<T>(handle: &AppHandle, f: impl FnOnce(&mut Registry) -> Result<T, String>) -> Result<T, String> {
-    let _g = REGISTRY_LOCK.lock().map_err(|_| "Bibliotheksliste gesperrt")?;
+    let _g = REGISTRY_LOCK.lock().map_err(|_| tr!("Library list locked"))?;
     let root = default_root(handle);
-    let mut reg = read(&root).ok_or("Die Bibliotheksliste fehlt noch (wird beim Start angelegt).")?;
+    let mut reg = read(&root).ok_or_else(|| tr!("The library list is still missing (it is created at startup)."))?;
     let out = f(&mut reg)?;
     write(&root, &reg)?;
     Ok(out)
@@ -179,10 +180,11 @@ fn library_for(handle: &AppHandle, entry: &LibEntry, path: PathBuf, index: AnyIn
 /// Lädt die Bibliothek `id` und macht sie zur aktiven (auch in der Liste).
 pub fn activate(handle: &AppHandle, id: &str) -> Result<(), String> {
     let root = default_root(handle);
-    let reg = read(&root).ok_or("Die Bibliotheksliste fehlt noch.")?;
-    let entry = reg.get(id).cloned().ok_or_else(|| format!("Unbekannte Bibliothek: {id}"))?;
+    let reg = read(&root).ok_or_else(|| tr!("The library list is still missing."))?;
+    let entry = reg.get(id).cloned().ok_or_else(|| tr!("Unknown library: {id}", id = id))?;
     let path = index_dir(&root).join(&entry.file);
-    let index = AnyIndex::load(&path).map_err(|e| format!("Bibliothek „{}“ lässt sich nicht laden ({}): {e}", entry.name, path.display()))?;
+    let index = AnyIndex::load(&path)
+        .map_err(|e| tr!("The library \"{name}\" can't be loaded ({path}): {error}", name = entry.name, path = path.display(), error = e))?;
     let lib = library_for(handle, &entry, path, index);
     *lock(&handle.state::<AppState>().library)? = Some(lib);
     if reg.active != id {
@@ -207,7 +209,7 @@ pub fn startup(handle: &AppHandle) {
         if read(&root).is_none() {
             match migrate(&handle, &root) {
                 Ok(msg) => note = Some(msg),
-                Err(e) => note = Some(format!("Bibliotheken einrichten fehlgeschlagen: {e}")),
+                Err(e) => note = Some(tr!("Setting up the libraries failed: {error}", error = e)),
             }
         }
         if let Some(reg) = read(&root) {
@@ -234,7 +236,7 @@ pub fn startup(handle: &AppHandle) {
     if let Err(e) = spawned {
         set_status(&fallback, |s| {
             s.loading = false;
-            s.message = Some(format!("Bibliothek nicht geladen: {e}"));
+            s.message = Some(tr!("Library not loaded: {error}", error = e));
         });
     }
 }
@@ -252,6 +254,27 @@ pub fn fmt_de(n: usize) -> String {
     out
 }
 
+/// Group and decimal separator of the chosen language (like `toLocaleString`
+/// in the UI): 253,570 / 253.570 / 253 570.
+pub fn separators() -> (char, char) {
+    match klang_i18n::language().as_str() {
+        "de" | "nl" | "es" | "it" => ('.', ','),
+        "fr" => ('\u{202f}', ','),
+        "pl" => ('\u{a0}', ','),
+        _ => (',', '.'),
+    }
+}
+
+/// Number with the group separator of the chosen language (for messages).
+pub fn fmt_num(n: usize) -> String {
+    let group = separators().0;
+    if group == '.' {
+        fmt_de(n)
+    } else {
+        fmt_de(n).replace('.', &group.to_string())
+    }
+}
+
 // ---------------------------------------------------------------- Verschmelzen
 
 /// Setzt eine fertige Indexdatei als neuen Stand der Bibliothek `id` ein: Ist
@@ -265,7 +288,7 @@ pub fn install(handle: &AppHandle, id: &str, new_path: &Path, edit: impl FnOnce(
     // Laden vor dem Sperren (eine große Bibliothek braucht etwa eine Sekunde)
     let mut fresh = if active_now { Some(AnyIndex::load(new_path).map_err(|e| e.to_string())?) } else { None };
     update(handle, |reg| {
-        let entry = reg.get_mut(id).ok_or_else(|| format!("Bibliothek {id} gibt es nicht mehr"))?;
+        let entry = reg.get_mut(id).ok_or_else(|| tr!("Library {id} no longer exists", id = id))?;
         let old = dir.join(&entry.file);
         let new_name = new_path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
         let canonical = new_name.strip_suffix(".neu.kwix").map(|s| format!("{s}.kwix"));
@@ -314,12 +337,12 @@ pub fn merge_into(handle: &AppHandle, id: &str, new: &Path, packs: &[String], pa
     let st = handle.state::<AppState>();
     let root = default_root(handle);
     let dir = index_dir(&root);
-    let entry = read(&root).and_then(|r| r.get(id).cloned()).ok_or_else(|| format!("Bibliothek {id} gibt es nicht"))?;
+    let entry = read(&root).and_then(|r| r.get(id).cloned()).ok_or_else(|| tr!("Library {id} doesn't exist", id = id))?;
     let current = dir.join(&entry.file);
     let target = dir.join(other_file(&entry.file));
     set_status(handle, |s| {
         s.merging = Some(0.0);
-        s.message = Some(format!("Übernehme in „{}“ …", entry.name));
+        s.message = Some(tr!("Adding to \"{library}\" …", library = entry.name));
     });
     let result = (|| -> Result<MergeStats, String> {
         let base = AnyIndex::load(&current).map_err(|e| format!("{}: {e}", current.display()))?;
@@ -402,33 +425,39 @@ pub fn list(handle: &AppHandle) -> Vec<LibView> {
 
 /// Kennung zu einer Angabe des Agenten (Kennung oder Name).
 pub fn resolve(handle: &AppHandle, key: &str) -> Result<String, String> {
-    let reg = read(&default_root(handle)).ok_or("Die Bibliotheksliste fehlt noch.")?;
+    let reg = read(&default_root(handle)).ok_or_else(|| tr!("The library list is still missing."))?;
     let key = key.trim();
     reg.libraries
         .iter()
         .find(|l| l.id == key)
         .or_else(|| reg.libraries.iter().find(|l| l.name.eq_ignore_ascii_case(key)))
         .map(|l| l.id.clone())
-        .ok_or_else(|| format!("Keine Bibliothek „{key}“ (vorhanden: {})", reg.libraries.iter().map(|l| l.name.as_str()).collect::<Vec<_>>().join(", ")))
+        .ok_or_else(|| {
+            tr!(
+                "No library \"{name}\" (available: {libraries})",
+                name = key,
+                libraries = reg.libraries.iter().map(|l| l.name.as_str()).collect::<Vec<_>>().join(", ")
+            )
+        })
 }
 
 fn busy_text(st: &AppState) -> Option<String> {
     let s = st.library_status.lock().ok()?;
     (s.building.is_some() || s.download.is_some() || s.adding || s.merging.is_some() || s.loading || s.pipeline.is_some())
-        .then(|| "Gerade wird heruntergeladen, indiziert oder übernommen – bitte warten oder abbrechen.".to_string())
+        .then(|| tr!("Downloading, indexing or adding is in progress – please wait or cancel."))
 }
 
 /// Legt eine leere Bibliothek an (wird nicht aktiv).
 pub fn create(handle: &AppHandle, name: &str) -> Result<LibEntry, String> {
     let name = name.trim();
     if name.is_empty() {
-        return Err("Bitte einen Namen angeben.".into());
+        return Err(tr!("Please enter a name."));
     }
     let dir = index_dir(&default_root(handle));
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     update(handle, |reg| {
         if reg.libraries.iter().any(|l| l.name.eq_ignore_ascii_case(name)) {
-            return Err(format!("Eine Bibliothek „{name}“ gibt es schon."));
+            return Err(tr!("A library named \"{name}\" already exists.", name = name));
         }
         let s = unique_slug(name, reg, &dir);
         let file = format!("{s}.kwix");
@@ -442,13 +471,13 @@ pub fn create(handle: &AppHandle, name: &str) -> Result<LibEntry, String> {
 pub fn rename(handle: &AppHandle, id: &str, name: &str) -> Result<(), String> {
     let name = name.trim();
     if name.is_empty() {
-        return Err("Bitte einen Namen angeben.".into());
+        return Err(tr!("Please enter a name."));
     }
     update(handle, |reg| {
         if reg.libraries.iter().any(|l| l.id != id && l.name.eq_ignore_ascii_case(name)) {
-            return Err(format!("Eine Bibliothek „{name}“ gibt es schon."));
+            return Err(tr!("A library named \"{name}\" already exists.", name = name));
         }
-        reg.get_mut(id).ok_or_else(|| format!("Unbekannte Bibliothek: {id}"))?.name = name.to_string();
+        reg.get_mut(id).ok_or_else(|| tr!("Unknown library: {id}", id = id))?.name = name.to_string();
         Ok(())
     })?;
     let st = handle.state::<AppState>();
@@ -462,15 +491,15 @@ pub fn rename(handle: &AppHandle, id: &str, name: &str) -> Result<(), String> {
 /// bleibt; war sie aktiv, wird „Standard“ aktiv.
 pub fn delete(handle: &AppHandle, id: &str) -> Result<(), String> {
     if id == STANDARD {
-        return Err("„Standard“ lässt sich nicht löschen.".into());
+        return Err(tr!("The \"Standard\" library can't be deleted."));
     }
     let st = handle.state::<AppState>();
     if let Some(b) = busy_text(&st) {
         return Err(b);
     }
     let root = default_root(handle);
-    let reg = read(&root).ok_or("Die Bibliotheksliste fehlt noch.")?;
-    let entry = reg.get(id).cloned().ok_or_else(|| format!("Unbekannte Bibliothek: {id}"))?;
+    let reg = read(&root).ok_or_else(|| tr!("The library list is still missing."))?;
+    let entry = reg.get(id).cloned().ok_or_else(|| tr!("Unknown library: {id}", id = id))?;
     if reg.active == id || lock(&st.library)?.as_ref().is_some_and(|l| l.id == id) {
         activate(handle, STANDARD)?;
     }
@@ -513,7 +542,8 @@ fn migrate(handle: &AppHandle, root: &Path) -> Result<String, String> {
     // Teilmengen der vollen PDMX als eigene Bibliotheken (Datei nur verschieben)
     for (_, idx, _, pack) in &own {
         let pack = pack.unwrap_or_default();
-        let name = pack_name(pack).unwrap_or_else(|| pack.to_string());
+        // untranslated: the saved name and the id must not depend on the language
+        let name = pack_name_untranslated(pack).unwrap_or_else(|| pack.to_string());
         let s = unique_slug(&name, &reg, &dir);
         let file = format!("{s}.kwix");
         let target = dir.join(&file);
@@ -549,7 +579,7 @@ fn migrate(handle: &AppHandle, root: &Path) -> Result<String, String> {
     } else {
         set_status(handle, |s| {
             s.merging = Some(0.0);
-            s.message = Some(format!("Richte die Bibliothek „Standard“ ein (aus {}) …", from.join(", ")));
+            s.message = Some(tr!("Setting up the library \"{name}\" (from {folders}) …", name = STANDARD_NAME, folders = from.join(", ")));
         });
         let result = (|| -> Result<MergeStats, String> {
             let loaded: Vec<AnyIndex> = rest.iter().map(|f| AnyIndex::load(&f.1).map_err(|e| format!("{}: {e}", f.1.display()))).collect::<Result<_, _>>()?;
@@ -580,15 +610,45 @@ fn migrate(handle: &AppHandle, root: &Path) -> Result<String, String> {
     let folders: Vec<String> = standard.paths.iter().filter(|p| Path::new(p).is_dir()).cloned().collect();
     standard.paths.retain(|p| Path::new(p).is_dir() || !folders.iter().any(|f| Path::new(p).starts_with(f)));
     standard.paths.dedup();
-    let summary = format!(
-        "Bibliotheken eingerichtet: „Standard“ mit {} Partituren{}{}.",
-        fmt_de(standard.scores),
-        if from.is_empty() { String::new() } else { format!(" (aus {})", from.join(", ")) },
-        if reg.libraries.is_empty() { String::new() } else { format!("; eigene Bibliotheken: {}", reg.libraries.iter().map(|l| l.name.as_str()).collect::<Vec<_>>().join(", ")) }
-    );
+    let (n, count, folders) = (standard.scores, fmt_num(standard.scores), from.join(", "));
+    let own = reg.libraries.iter().map(|l| l.name.as_str()).collect::<Vec<_>>().join(", ");
+    let summary = match (from.is_empty(), reg.libraries.is_empty()) {
+        (true, true) => trn!(
+            n,
+            "Libraries set up: \"{name}\" with {count} score.",
+            "Libraries set up: \"{name}\" with {count} scores.",
+            name = STANDARD_NAME,
+            count = count
+        ),
+        (false, true) => trn!(
+            n,
+            "Libraries set up: \"{name}\" with {count} score (from {folders}).",
+            "Libraries set up: \"{name}\" with {count} scores (from {folders}).",
+            name = STANDARD_NAME,
+            count = count,
+            folders = folders
+        ),
+        (true, false) => trn!(
+            n,
+            "Libraries set up: \"{name}\" with {count} score; separate libraries: {libraries}.",
+            "Libraries set up: \"{name}\" with {count} scores; separate libraries: {libraries}.",
+            name = STANDARD_NAME,
+            count = count,
+            libraries = own
+        ),
+        (false, false) => trn!(
+            n,
+            "Libraries set up: \"{name}\" with {count} score (from {folders}); separate libraries: {libraries}.",
+            "Libraries set up: \"{name}\" with {count} scores (from {folders}); separate libraries: {libraries}.",
+            name = STANDARD_NAME,
+            count = count,
+            folders = folders,
+            libraries = own
+        ),
+    };
     reg.libraries.insert(0, standard);
     {
-        let _g = REGISTRY_LOCK.lock().map_err(|_| "Bibliotheksliste gesperrt")?;
+        let _g = REGISTRY_LOCK.lock().map_err(|_| tr!("Library list locked"))?;
         write(root, &reg)?;
     }
     // alte Indizes (jetzt in „Standard“) entfernen
@@ -620,7 +680,8 @@ pub async fn library_switch(app: AppHandle, state: State<'_, AppState>, id: Stri
     activate(&app, &id)?;
     let name = lock(&state.library)?.as_ref().map(|l| (l.name.clone(), l.index.score_count()));
     if let Some((name, scores)) = name {
-        lock(&state.library_status)?.message = Some(format!("Bibliothek „{name}“: {scores} Partituren"));
+        lock(&state.library_status)?.message =
+            Some(trn!(scores, "Library \"{name}\": {count} score", "Library \"{name}\": {count} scores", name = name, count = fmt_num(scores)));
     }
     emit_info(&app);
     Ok(list(&app))

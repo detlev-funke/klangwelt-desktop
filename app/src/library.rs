@@ -7,8 +7,9 @@
 
 pub use klang_app::library::*;
 
-use crate::libraries::{self, fmt_de};
+use crate::libraries::{self, fmt_num};
 use crate::state::{lock, AppState, CmdResult};
+use klang_i18n::{tid, tk, tr, translate, trn};
 use klang_music::fetch::{self, ExtractStats};
 use klang_music::library::{build_files_to, collect_files, gather};
 use klang_music::pdmx;
@@ -36,17 +37,17 @@ pub(crate) fn emit_info(app: &AppHandle) {
 /// Läuft schon ein Auftrag (Download, Indizieren, Übernehmen, Laden)?
 fn check_idle(s: &LibStatus) -> CmdResult<()> {
     if s.building.is_some() || s.download.is_some() || s.adding || s.merging.is_some() || s.pipeline.is_some() {
-        return Err("Die Bibliothek wird gerade geladen, indiziert oder übernommen.".into());
+        return Err(tr!("The library is busy loading, indexing or adding scores."));
     }
     if s.loading {
-        return Err("Die Bibliothek wird noch geladen – einen Moment.".into());
+        return Err(tr!("The library is still loading – just a moment."));
     }
     Ok(())
 }
 
 /// Aktive Bibliothek (Kennung, Name).
 fn active(st: &AppState) -> CmdResult<(String, String)> {
-    lock(&st.library)?.as_ref().map(|l| (l.id.clone(), l.name.clone())).ok_or_else(|| "Keine Bibliothek geladen.".to_string())
+    lock(&st.library)?.as_ref().map(|l| (l.id.clone(), l.name.clone())).ok_or_else(|| tr!("No library loaded."))
 }
 
 /// Nimmt Partituren (Dateien oder ganze Ordner) in die aktive Bibliothek auf:
@@ -63,14 +64,14 @@ pub fn start_add(app: &AppHandle, paths: &[String]) -> CmdResult<String> {
     let st = app.state::<AppState>();
     let paths: Vec<PathBuf> = paths.iter().map(|p| p.trim().trim_matches('"')).filter(|p| !p.is_empty()).map(PathBuf::from).collect();
     if paths.is_empty() {
-        return Err("Keine Datei angegeben".into());
+        return Err(tr!("No file given"));
     }
     let (id, name) = active(&st)?;
     {
         let mut s = lock(&st.library_status)?;
         check_idle(&s)?;
         s.adding = true;
-        s.message = Some(format!("Füge {} zu „{name}“ hinzu …", what_paths(&paths)));
+        s.message = Some(tr!("Adding {what} to \"{library}\" …", what = what_paths(&paths), library = name));
     }
     st.library_cancel.store(false, Ordering::SeqCst);
     emit_info(app);
@@ -102,8 +103,8 @@ fn strip_verbatim(p: PathBuf) -> PathBuf {
 /// „„Eigene““ bzw. „3 Dateien/Ordner“ für Meldungen.
 fn what_paths(paths: &[PathBuf]) -> String {
     match paths {
-        [one] => format!("„{}“", one.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| one.display().to_string())),
-        more => format!("{} Dateien/Ordner", more.len()),
+        [one] => tr!("\"{name}\"", name = one.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| one.display().to_string())),
+        more => trn!(more.len(), "{n} file/folder", "{n} files/folders"),
     }
 }
 
@@ -117,7 +118,7 @@ fn index_into(handle: &AppHandle, target: &str, paths: &[PathBuf], packs: &[Stri
     let lib_name = libraries::read(&root).and_then(|r| r.get(target).map(|l| l.name.clone())).unwrap_or_else(|| target.to_string());
     if let Ok(mut s) = st.library_status.lock() {
         s.building = Some((0, 0));
-        s.message = Some(format!("{prefix}Indiziere {} …", what_paths(paths)));
+        s.message = Some(format!("{prefix}{}", tr!("Indexing {what}…", what = what_paths(paths))));
     }
     emit_info(handle);
     let (files, meta, missing) = gather(paths);
@@ -151,24 +152,33 @@ fn index_into(handle: &AppHandle, target: &str, paths: &[PathBuf], packs: &[Stri
         Ok((b, m)) => {
             let new_scores = b.scores.saturating_sub(m.skipped_scores as usize);
             let mut parts = vec![match (new_scores, b.scores) {
-                (0, 0) => "Keine Partituren gefunden".to_string(),
-                (0, _) => "Nichts Neues".to_string(),
-                (1, _) => "1 Partitur übernommen".to_string(),
-                (n, _) => format!("{} Partituren übernommen", fmt_de(n)),
+                (0, 0) => tr!("No scores found"),
+                (0, _) => tr!("Nothing new"),
+                (n, _) => trn!(n, "{count} score added", "{count} scores added", count = fmt_num(n)),
             }];
             if m.skipped_scores > 0 {
-                parts.push(format!("{} schon enthalten", fmt_de(m.skipped_scores as usize)));
+                let skipped = m.skipped_scores as usize;
+                parts.push(trn!(skipped, "{count} already included", "{count} already included", count = fmt_num(skipped)));
             }
             if b.failed > 0 {
-                parts.push(format!("{} nicht lesbar ({})", b.failed, b.errors.first().cloned().unwrap_or_default()));
+                parts.push(trn!(b.failed, "{n} unreadable ({error})", "{n} unreadable ({error})", error = b.errors.first().cloned().unwrap_or_default()));
             }
             if !missing.is_empty() {
                 parts.push(missing.join("; "));
             }
-            format!("{prefix}{} – „{lib_name}“ hat jetzt {} Partituren.", parts.join(", "), fmt_de(m.scores as usize))
+            let total = m.scores as usize;
+            let summary = trn!(
+                total,
+                "{parts} – \"{library}\" now has {count} score.",
+                "{parts} – \"{library}\" now has {count} scores.",
+                parts = parts.join(", "),
+                library = lib_name,
+                count = fmt_num(total)
+            );
+            format!("{prefix}{summary}")
         }
-        Err(e) if e == "abgebrochen" => "Abgebrochen – die Bibliothek ist unverändert.".to_string(),
-        Err(e) => format!("{prefix}Übernehmen fehlgeschlagen: {e}"),
+        Err(e) if e == "abgebrochen" => tr!("Cancelled – the library is unchanged."),
+        Err(e) => format!("{prefix}{}", tr!("Adding failed: {error}", error = e)),
     };
     if let Ok(mut s) = st.library_status.lock() {
         s.message = Some(message);
@@ -182,17 +192,17 @@ fn start_rebuild(app: &AppHandle, prefix: String) -> CmdResult<()> {
     let st = app.state::<AppState>();
     let (id, name) = active(&st)?;
     let root = default_root(app);
-    let entry = libraries::read(&root).and_then(|r| r.get(&id).cloned()).ok_or("Die Bibliothek fehlt in der Liste.")?;
+    let entry = libraries::read(&root).and_then(|r| r.get(&id).cloned()).ok_or_else(|| tr!("The library is missing from the list."))?;
     let mut sources: Vec<PathBuf> = entry.packs.iter().filter_map(|p| libraries::pack_dir(app, p)).filter(|d| d.is_dir()).collect();
     sources.extend(entry.paths.iter().map(PathBuf::from).filter(|p| p.exists()));
     if sources.is_empty() {
-        return Err(format!("„{name}“ hat keine Quellen zum Neuaufbau (Pakete oder Ordner fehlen)."));
+        return Err(tr!("\"{name}\" has no sources to rebuild from (packs or folders are missing).", name = name));
     }
     {
         let mut s = lock(&st.library_status)?;
         check_idle(&s)?;
         s.building = Some((0, 0));
-        s.message = Some(format!("{prefix}Baue „{name}“ neu auf …"));
+        s.message = Some(format!("{prefix}{}", tr!("Rebuilding \"{name}\" …", name = name)));
     }
     st.library_cancel.store(false, Ordering::SeqCst);
     emit_info(app);
@@ -224,11 +234,14 @@ fn start_rebuild(app: &AppHandle, prefix: String) -> CmdResult<()> {
                     e.scores = b.scores;
                     e.voices = b.voices;
                 }) {
-                    Ok(()) => format!("{prefix}„{name}“ neu aufgebaut: {} Partituren, {} Stimmen.", fmt_de(b.scores), fmt_de(b.voices)),
-                    Err(e) => format!("Neuaufbau fehlgeschlagen: {e}"),
+                    Ok(()) => format!(
+                        "{prefix}{}",
+                        tr!("\"{name}\" rebuilt: {scores} scores, {voices} voices.", name = name, scores = fmt_num(b.scores), voices = fmt_num(b.voices))
+                    ),
+                    Err(e) => tr!("Rebuild failed: {error}", error = e),
                 },
-                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => "Neuaufbau abgebrochen – die Bibliothek ist unverändert.".to_string(),
-                Err(e) => format!("Neuaufbau fehlgeschlagen: {e}"),
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => tr!("Rebuild cancelled – the library is unchanged."),
+                Err(e) => tr!("Rebuild failed: {error}", error = e),
             };
             if let Ok(mut s) = st.library_status.lock() {
                 s.building = None;
@@ -352,7 +365,9 @@ fn any_score(dir: &Path) -> bool {
 /// aktuell; nach Erfolg ist er erledigt.
 fn finish_pipeline(handle: &AppHandle, dir: &Path, job: &Job, mut what: String, fetch_meta: bool) {
     let st = handle.state::<AppState>();
-    let name = job.name.as_str();
+    // The job file stores the untranslated pack name (older jobs: a German one, which stays as it is).
+    let name = translate(&job.name);
+    let name = name.as_str();
     if job.with_meta && fetch_meta {
         set_phase(handle, dir, JobPhase::Metadaten);
         if let Ok(mut s) = st.library_status.lock() {
@@ -370,7 +385,10 @@ fn finish_pipeline(handle: &AppHandle, dir: &Path, job: &Job, mut what: String, 
         }
         // Genre/Komponist: Fehler sind kein Grund, nicht zu indizieren.
         match fetch_metadata(handle, dir, name) {
-            Ok(n) => what.push_str(&format!("Genre/Komponist für {n}. ")),
+            Ok(n) => {
+                what.push_str(&tr!("Genre/composer for {count}.", count = fmt_num(n)));
+                what.push(' ');
+            }
             Err(e) => what.push_str(&format!("({e}) ")),
         }
     }
@@ -380,7 +398,7 @@ fn finish_pipeline(handle: &AppHandle, dir: &Path, job: &Job, mut what: String, 
     if st.library_cancel.load(Ordering::SeqCst) {
         set_phase(handle, dir, JobPhase::Abgebrochen);
         if let Ok(mut s) = st.library_status.lock() {
-            s.message = Some(format!("{name}: abgebrochen."));
+            s.message = Some(tr!("{name}: cancelled.", name = name));
         }
         emit_info(handle);
         return;
@@ -425,10 +443,13 @@ pub fn resume_pending(handle: &AppHandle) {
             continue;
         }
         match read_job(&dir) {
-            Some(j) if j.attempts >= 3 => notes.push(format!("{}: Übernehmen mehrfach fehlgeschlagen – bitte erneut herunterladen.", j.name)),
+            Some(j) if j.attempts >= 3 => notes.push(tr!("{name}: adding failed several times – please download again.", name = translate(&j.name))),
             Some(j) => match j.phase {
                 JobPhase::Metadaten | JobPhase::Indizieren => todo.push((dir, j)),
-                JobPhase::Laden => notes.push(format!("{}: Download wurde unterbrochen – „Herunterladen“ setzt ihn fort (vorhandene Partituren werden übersprungen).", j.name)),
+                JobPhase::Laden => notes.push(tr!(
+                    "{name}: the download was interrupted – \"Download\" resumes it (scores already there are skipped).",
+                    name = translate(&j.name)
+                )),
                 JobPhase::Abgebrochen => {}
             },
             None => {}
@@ -450,15 +471,16 @@ pub fn resume_pending(handle: &AppHandle) {
         std::thread::sleep(Duration::from_secs(2));
         let st = handle.state::<AppState>();
         for (dir, job) in todo {
+            let name = translate(&job.name);
             {
                 let Ok(mut s) = st.library_status.lock() else { return };
                 if check_idle(&s).is_err() {
                     return; // etwas anderes läuft schon
                 }
-                s.message = Some(format!("{}: wird fertiggestellt (unterbrochen beim letzten Mal) …", job.name));
+                s.message = Some(tr!("{name}: finishing (interrupted last time) …", name = name));
                 s.pipeline = Some(QueuedDownload {
                     id: job.pack.clone().unwrap_or_default(),
-                    name: job.name.clone(),
+                    name: name.clone(),
                     library: job.library.clone().unwrap_or_default(),
                     library_name: String::new(),
                     folder: None,
@@ -470,7 +492,7 @@ pub fn resume_pending(handle: &AppHandle) {
             write_job(&handle, &dir, &job);
             emit_info(&handle);
             let fetch_meta = job.phase == JobPhase::Metadaten && !dir.join(pdmx::META_FILE).is_file();
-            finish_pipeline(&handle, &dir, &job, format!("{} (beim letzten Mal unterbrochen): ", job.name), fetch_meta);
+            finish_pipeline(&handle, &dir, &job, format!("{} ", tr!("{name} (interrupted last time):", name = name)), fetch_meta);
         }
         // Hinweise (z. B. unterbrochener Download) an die Abschlussmeldung hängen
         if !notes.is_empty() {
@@ -504,20 +526,21 @@ impl Drop for PipelineGuard {
 #[serde(rename_all = "camelCase")]
 pub struct CatalogEntry {
     id: &'static str,
-    name: &'static str,
-    description: &'static str,
+    /// Display texts (translated): name, description, license, group name/description, format
+    name: String,
+    description: String,
     /// ungefähre Zahl der Partituren
     scores: usize,
     download_mb: u32,
     disk_mb: u32,
-    license: &'static str,
+    license: String,
     source_url: &'static str,
     /// Sammlung (Panel in der Oberfläche): „pdmx“, „openscore“, „kernscores“, „dcml“
     group: &'static str,
-    group_name: &'static str,
-    group_description: &'static str,
+    group_name: String,
+    group_description: String,
     /// Dateiformat der Partituren (für die Anzeige)
-    format: &'static str,
+    format: String,
     /// Bringt eine Akkordanalyse von Fachleuten mit
     expert_harmony: bool,
     /// vorgeschlagener Zielordner
@@ -537,7 +560,7 @@ const PDMX_CSV_URL: &str = "https://zenodo.org/api/records/15571083/files/PDMX.c
 const PDMX_CSV_BYTES: u64 = 225_399_738;
 const PDMX_RECORD: &str = "https://zenodo.org/records/15571083";
 const PDMX_BYTES: u64 = 1_894_335_797;
-const PDMX_LICENSE: &str = "Partituren gemeinfrei bzw. CC0 laut MuseScore · Datensatz PDMX (Long et al. 2024) unter CC-BY 4.0";
+const PDMX_LICENSE: &str = tk!("Scores in the public domain or CC0 according to MuseScore · PDMX dataset (Long et al. 2024) under CC-BY 4.0");
 
 /// Ein Ordner aus einem GitHub-Repositorium.
 struct Repo {
@@ -565,23 +588,23 @@ struct Group {
 const GROUPS: [Group; 4] = [
     Group {
         id: "pdmx",
-        name: "PDMX – gemeinfreie MuseScore-Partituren",
-        description: "Riesige, bunt gemischte Sammlung: Klassik, Volkslieder, Pop-Bearbeitungen, Übungsstücke. Gut für die Melodiesuche – die Qualität schwankt (Abschriften von Laien, viele Bearbeitungen).",
+        name: tk!("PDMX – public-domain MuseScore scores"),
+        description: tk!("Huge, eclectic collection: classical, folk songs, pop arrangements, practice pieces. Good for melody search – the quality varies (transcriptions by amateurs, many arrangements)."),
     },
     Group {
         id: "openscore",
-        name: "OpenScore – sorgfältig gesetzte Partituren",
-        description: "Von Freiwilligen nach Erstausgaben gesetzt und geprüft, gemeinfrei (CC0). Kunstlieder und Streichquartette, darunter Mozart, Beethoven, Haydn, Schubert, Brahms.",
+        name: tk!("OpenScore – carefully engraved scores"),
+        description: tk!("Engraved and checked by volunteers from first editions, public domain (CC0). Art songs and string quartets, including Mozart, Beethoven, Haydn, Schubert, Brahms."),
     },
     Group {
         id: "kernscores",
-        name: "KernScores – Forschungsausgaben im Humdrum-Format",
-        description: "Der akademische Standard des CCARH (Stanford): je ein Paket pro Epoche vom Barock bis ins 20. Jahrhundert, darunter Bachs Choräle und das Wohltemperierte Klavier, Mozarts und Beethovens Klaviersonaten – fehlerarm und vollständig. Nicht kommerziell (meist CC BY-NC-SA 4.0, einige Sammlungen ohne Lizenzangabe).",
+        name: tk!("KernScores – research editions in Humdrum format"),
+        description: tk!("The academic standard from CCARH (Stanford): one pack per era from the Baroque to the 20th century, including Bach's chorales and the Well-Tempered Clavier, Mozart's and Beethoven's piano sonatas – few errors and complete. Non-commercial (mostly CC BY-NC-SA 4.0, some collections without a license statement)."),
     },
     Group {
         id: "dcml",
-        name: "DCML – mit Harmonieanalyse von Fachleuten",
-        description: "Korpora des Digital and Cognitive Musicology Lab (EPFL Lausanne): zu jedem Takt eine geprüfte Akkordanalyse, von Monteverdi bis Bartók, je ein Paket pro Epoche. Klangwelt zählt diese Analyse statt der automatischen Erkennung – die Akkordstatistik im Harmonie-Fenster wird dadurch verlässlicher. Nicht kommerziell (CC BY-NC-SA 4.0).",
+        name: tk!("DCML – with harmonic analysis by experts"),
+        description: tk!("Corpora of the Digital and Cognitive Musicology Lab (EPFL Lausanne): a checked chord analysis for every bar, from Monteverdi to Bartók, one pack per era. Klangwelt counts this analysis instead of the automatic detection – which makes the chord statistics in the Harmony window more reliable. Non-commercial (CC BY-NC-SA 4.0)."),
     },
 ];
 
@@ -617,10 +640,10 @@ fn dcml_tables(p: &str) -> bool {
     p == "metadata.tsv" || (p.starts_with("notes/") && p.ends_with(".notes.tsv")) || (p.starts_with("harmonies/") && p.ends_with(".harmonies.tsv"))
 }
 
-const OPENSCORE_LICENSE: &str = "CC0 1.0 (gemeinfrei) · OpenScore, https://openscore.cc";
+const OPENSCORE_LICENSE: &str = tk!("CC0 1.0 (public domain) · OpenScore, https://openscore.cc");
 /// Stand November 2026: Die Repositorien von Craig Stuart Sapp tragen meist
 /// CC BY-NC-SA 4.0 (LICENSE.txt), einige haben keine Lizenzdatei.
-const KERN_LICENSE: &str = "KernScores (Craig Stuart Sapp, CCARH Stanford): meist CC BY-NC-SA 4.0, einige Sammlungen ohne Lizenzangabe – nur privat und nicht kommerziell nutzen, Quelle nennen";
+const KERN_LICENSE: &str = tk!("KernScores (Craig Stuart Sapp, CCARH Stanford): mostly CC BY-NC-SA 4.0, some collections without a license statement – private and non-commercial use only, credit the source");
 /// Komponist einer Sammlung, die nur ein Komponist geschrieben hat – gilt für
 /// Partituren, deren Quelle ihn nicht nennt (DCML-Bach-Choräle, einzelne Sätze
 /// bei Couperin, Liszt …). Sammlungen mehrerer Komponisten fehlen hier.
@@ -673,7 +696,7 @@ fn repo_composer(repo: &str) -> Option<&'static str> {
 
 /// Mitgelieferte Dateilisten der Sammlungen – Ausweg, wenn die GitHub-API nicht antwortet.
 const SAMMLUNGEN: &str = include_str!("sammlungen.txt");
-const DCML_LICENSE: &str = "CC BY-NC-SA 4.0 · DCML, EPFL Lausanne – bei Verwendung zitieren, nicht kommerziell";
+const DCML_LICENSE: &str = tk!("CC BY-NC-SA 4.0 · DCML, EPFL Lausanne – cite when used, non-commercial");
 
 /// Größen aus den Dateilisten der Repositorien (November 2026). PDMX
 /// gemessen (≈ 3 MB/s): Kostprobe ≈ 10 s, Auswahl ≈ 1,5 min; der ganze
@@ -681,9 +704,9 @@ const DCML_LICENSE: &str = "CC BY-NC-SA 4.0 · DCML, EPFL Lausanne – bei Verwe
 const PACKS: [Pack; 13] = [
     Pack {
         id: "pdmx-kostprobe",
-        name: "PDMX – Kostprobe",
+        name: tid!("PDMX – Kostprobe"),
         folder: "PDMX-Kostprobe",
-        description: "3 000 bunt gemischte Partituren zum Ausprobieren – in etwa 10 Sekunden geladen und indiziert.",
+        description: tk!("3,000 assorted scores to try things out – downloaded and indexed in about 10 seconds."),
         group: "pdmx",
         format: "MusicXML",
         license: PDMX_LICENSE,
@@ -695,9 +718,9 @@ const PACKS: [Pack; 13] = [
     },
     Pack {
         id: "pdmx-auswahl",
-        name: "PDMX – Auswahl",
+        name: tid!("PDMX – Auswahl"),
         folder: "PDMX-Auswahl",
-        description: "30 000 Partituren: Klassik, Volkslieder, Choräle, Pop-Bearbeitungen, Übungsstücke – gut für die Melodiesuche. Etwa 1,5 Minuten.",
+        description: tk!("30,000 scores: classical, folk songs, chorales, pop arrangements, practice pieces – good for melody search. About 1.5 minutes."),
         group: "pdmx",
         format: "MusicXML",
         license: PDMX_LICENSE,
@@ -709,9 +732,9 @@ const PACKS: [Pack; 13] = [
     },
     Pack {
         id: "pdmx-voll",
-        name: "PDMX – vollständig",
+        name: tid!("PDMX – vollständig"),
         folder: "PDMX",
-        description: "Der ganze Datensatz mit rund 254 000 Partituren. Je nach Leitung 5–15 Minuten Download, danach einige Minuten Indizieren; der Index liegt auf der Platte, beim Suchen genügen rund 0,2 GB Arbeitsspeicher. Abbrechen und später fortsetzen ist möglich.",
+        description: tk!("The whole dataset with about 254,000 scores. 5–15 minutes of download depending on your connection, then a few minutes of indexing; the index stays on disk, searching needs only about 0.2 GB of memory. You can cancel and resume later."),
         group: "pdmx",
         format: "MusicXML",
         license: PDMX_LICENSE,
@@ -723,9 +746,9 @@ const PACKS: [Pack; 13] = [
     },
     Pack {
         id: "openscore-lieder",
-        name: "OpenScore – Lieder",
+        name: tid!("OpenScore – Lieder"),
         folder: "OpenScore-Lieder",
-        description: "Rund 1 460 Kunstlieder für Singstimme und Klavier: Brahms, Schubert, Schumann (Robert und Clara), Fanny Hensel, Wolf, Fauré, Debussy und viele Komponistinnen des 19. Jahrhunderts.",
+        description: tk!("About 1,460 art songs for voice and piano: Brahms, Schubert, Schumann (Robert and Clara), Fanny Hensel, Wolf, Fauré, Debussy and many women composers of the 19th century."),
         group: "openscore",
         format: "MusicXML",
         license: OPENSCORE_LICENSE,
@@ -737,9 +760,9 @@ const PACKS: [Pack; 13] = [
     },
     Pack {
         id: "openscore-quartette",
-        name: "OpenScore – Streichquartette",
+        name: tid!("OpenScore – Streichquartette"),
         folder: "OpenScore-Streichquartette",
-        description: "Rund 200 Sätze für Streichquartett: Haydn (38), Mozart (23), Dvořák (18), Beethoven (12), Schubert, Mendelssohn, Brahms, Ravel und andere.",
+        description: tk!("About 200 movements for string quartet: Haydn (38), Mozart (23), Dvořák (18), Beethoven (12), Schubert, Mendelssohn, Brahms, Ravel and others."),
         group: "openscore",
         format: "MusicXML",
         license: OPENSCORE_LICENSE,
@@ -751,9 +774,9 @@ const PACKS: [Pack; 13] = [
     },
     Pack {
         id: "kern-barock",
-        name: "Barock",
+        name: tid!("Barock"),
         folder: "KernScores-Barock",
-        description: "Bach: alle 370 vierstimmigen Choräle, beide Bände des Wohltemperierten Klaviers (jede Fugenstimme einzeln), Die Kunst der Fuge, Das Musikalische Opfer, zwei- und dreistimmige Inventionen · Scarlatti: 65 Klaviersonaten · Vivaldi: Concerti op. 6.",
+        description: tk!("Bach: all 370 four-part chorales, both books of the Well-Tempered Clavier (each fugue voice separately), The Art of Fugue, The Musical Offering, two- and three-part inventions · Scarlatti: 65 keyboard sonatas · Vivaldi: Concerti op. 6."),
         group: "kernscores",
         format: "**kern",
         license: KERN_LICENSE,
@@ -773,9 +796,9 @@ const PACKS: [Pack; 13] = [
     },
     Pack {
         id: "kern-klassik",
-        name: "Klassik",
+        name: tid!("Klassik"),
         folder: "KernScores-Klassik",
-        description: "Mozart: alle 18 Klaviersonaten (69 Sätze) · Beethoven: alle 32 Klaviersonaten (103 Sätze) und alle 16 Streichquartette (71 Sätze) · Haydn: Klaviersonaten (25 Sätze).",
+        description: tk!("Mozart: all 18 piano sonatas (69 movements) · Beethoven: all 32 piano sonatas (103 movements) and all 16 string quartets (71 movements) · Haydn: piano sonatas (25 movements)."),
         group: "kernscores",
         format: "**kern",
         license: KERN_LICENSE,
@@ -792,9 +815,9 @@ const PACKS: [Pack; 13] = [
     },
     Pack {
         id: "kern-romantik",
-        name: "Romantik",
+        name: tid!("Romantik"),
         folder: "KernScores-Romantik",
-        description: "Chopin: Mazurken und Préludes · Hummel: Präludien · Schubert: Lieder · Stephen Foster: Songs · Erks Deutscher Liederschatz (232 Volkslieder).",
+        description: tk!("Chopin: mazurkas and preludes · Hummel: preludes · Schubert: Lieder · Stephen Foster: songs · Erk's Deutscher Liederschatz (232 folk songs)."),
         group: "kernscores",
         format: "**kern",
         license: KERN_LICENSE,
@@ -813,9 +836,9 @@ const PACKS: [Pack; 13] = [
     },
     Pack {
         id: "kern-20jh",
-        name: "Um 1900 und 20. Jahrhundert",
+        name: tid!("Um 1900 und 20. Jahrhundert"),
         folder: "KernScores-20Jh",
-        description: "Scott Joplin: Ragtimes (47) · George Gershwin: Songs (29).",
+        description: tk!("Scott Joplin: rags (47) · George Gershwin: songs (29)."),
         group: "kernscores",
         format: "**kern",
         license: KERN_LICENSE,
@@ -830,11 +853,11 @@ const PACKS: [Pack; 13] = [
     },
     Pack {
         id: "dcml-barock",
-        name: "Barock, analysiert",
+        name: tid!("Barock, analysiert"),
         folder: "DCML-Barock",
-        description: "Bach (Englische und Französische Suiten, Sonaten, Partiten und Suiten für Violine, Violoncello und Flöte solo) · Corelli (Triosonaten, 149 Sätze) · Couperin (Concerts royaux, Clavecin-Stücke) · Scarlatti (69 Sonaten) · Schütz (Kleine geistliche Konzerte) · Frescobaldi (Fiori musicali) · Monteverdi (Madrigale) · Pergolesi (Stabat mater) · Peri (Euridice) · Händel (Klavier) · W. F. Bach · dazu 361 Bach-Choräle (diese ohne Analyse).",
+        description: tk!("Bach (English and French Suites, sonatas, partitas and suites for solo violin, cello and flute) · Corelli (trio sonatas, 149 movements) · Couperin (Concerts royaux, harpsichord pieces) · Scarlatti (69 sonatas) · Schütz (Kleine geistliche Konzerte) · Frescobaldi (Fiori musicali) · Monteverdi (madrigals) · Pergolesi (Stabat mater) · Peri (Euridice) · Handel (keyboard) · W. F. Bach · plus 361 Bach chorales (these without analysis)."),
         group: "dcml",
-        format: "DCML-Tabellen",
+        format: tk!("DCML tables"),
         license: DCML_LICENSE,
         source_url: "https://github.com/DCMLab/dcml_corpora",
         source: Source::Repos(&[
@@ -859,11 +882,11 @@ const PACKS: [Pack; 13] = [
     },
     Pack {
         id: "dcml-klassik",
-        name: "Klassik, analysiert",
+        name: tid!("Klassik, analysiert"),
         folder: "DCML-Klassik",
-        description: "Mozart (alle Klaviersonaten, 54 Sätze) · Beethoven (alle Klaviersonaten, 91 Sätze, und alle Streichquartette, 70 Sätze) · C. P. E. Bach (Klavierwerke, 66 Sätze) · J. C. Bach (Sonaten) · Koželuch (Klaviersonaten) · Pleyel (Streichquartette).",
+        description: tk!("Mozart (all piano sonatas, 54 movements) · Beethoven (all piano sonatas, 91 movements, and all string quartets, 70 movements) · C. P. E. Bach (keyboard works, 66 movements) · J. C. Bach (sonatas) · Koželuch (piano sonatas) · Pleyel (string quartets)."),
         group: "dcml",
-        format: "DCML-Tabellen",
+        format: tk!("DCML tables"),
         license: DCML_LICENSE,
         source_url: "https://github.com/DCMLab/dcml_corpora",
         source: Source::Repos(&[
@@ -881,11 +904,11 @@ const PACKS: [Pack; 13] = [
     },
     Pack {
         id: "dcml-romantik",
-        name: "Romantik, analysiert",
+        name: tid!("Romantik, analysiert"),
         folder: "DCML-Romantik",
-        description: "Chopin (Mazurken) · Schubert (Winterreise) · Robert Schumann (Kinderszenen, Liederkreis) · Clara Schumann (Lieder) · Mendelssohn (Streichquartette) · Liszt (Années de pèlerinage) · Grieg (Lyrische Stücke) · Tschaikowsky (Die Jahreszeiten) · Dvořák (Silhouetten) · Wagner (Ouvertüren) · Mahler (Kindertotenlieder) · Medtner (Märchen).",
+        description: tk!("Chopin (mazurkas) · Schubert (Winterreise) · Robert Schumann (Kinderszenen, Liederkreis) · Clara Schumann (Lieder) · Mendelssohn (string quartets) · Liszt (Années de pèlerinage) · Grieg (Lyric Pieces) · Tchaikovsky (The Seasons) · Dvořák (Silhouettes) · Wagner (overtures) · Mahler (Kindertotenlieder) · Medtner (Fairy Tales)."),
         group: "dcml",
-        format: "DCML-Tabellen",
+        format: tk!("DCML tables"),
         license: DCML_LICENSE,
         source_url: "https://github.com/DCMLab/dcml_corpora",
         source: Source::Repos(&[
@@ -909,11 +932,11 @@ const PACKS: [Pack; 13] = [
     },
     Pack {
         id: "dcml-20jh",
-        name: "Um 1900 und 20. Jahrhundert, analysiert",
+        name: tid!("Um 1900 und 20. Jahrhundert, analysiert"),
         folder: "DCML-20Jh",
-        description: "Debussy (Suite bergamasque) · Ravel (Klavierstücke) · Rachmaninow (Klavierstücke) · Bartók (Bagatellen) · Poulenc (Mouvements perpétuels) · Schulhoff (Suite dansante en jazz).",
+        description: tk!("Debussy (Suite bergamasque) · Ravel (piano pieces) · Rachmaninoff (piano pieces) · Bartók (Bagatelles) · Poulenc (Mouvements perpétuels) · Schulhoff (Suite dansante en jazz)."),
         group: "dcml",
-        format: "DCML-Tabellen",
+        format: tk!("DCML tables"),
         license: DCML_LICENSE,
         source_url: "https://github.com/DCMLab/dcml_corpora",
         source: Source::Repos(&[
@@ -959,11 +982,23 @@ pub(crate) fn covers(have: &str, want: &str) -> bool {
     have == want || matches!((pdmx_rank(have), pdmx_rank(want)), (Some(a), Some(b)) if a >= b)
 }
 
-/// Name eines Pakets mit seiner Sammlung davor („DCML – Klassik, analysiert“).
+/// Name of a pack with its collection in front ("DCML – Classical, analyzed"), for display.
 pub(crate) fn pack_name(id: &str) -> Option<String> {
+    pack_name_with(id, &translate)
+}
+
+/// The same untranslated ("DCML – Klassik, analysiert"): pack names are identifiers –
+/// saved library names and their ids come from it, so it must not depend on the language.
+pub(crate) fn pack_name_untranslated(id: &str) -> Option<String> {
+    pack_name_with(id, &|s: &str| s.to_string())
+}
+
+fn pack_name_with(id: &str, name_of: &dyn Fn(&str) -> String) -> Option<String> {
     let p = PACKS.iter().find(|p| p.id == id)?;
+    // The collection's short name (before " – " in the key) is a proper name.
     let short = GROUPS.iter().find(|g| g.id == p.group).and_then(|g| g.name.split(" – ").next()).unwrap_or("");
-    Some(if short.is_empty() || p.name.starts_with(short) { p.name.to_string() } else { format!("{short} – {}", p.name) })
+    let name = name_of(p.name);
+    Some(if short.is_empty() || p.name.starts_with(short) { name } else { format!("{short} – {name}") })
 }
 
 pub(crate) fn pack_folder(id: &str) -> Option<&'static str> {
@@ -1000,17 +1035,17 @@ pub async fn library_catalog(app: AppHandle, state: State<'_, AppState>) -> CmdR
             let g = GROUPS.iter().find(|g| g.id == p.group).unwrap_or(&GROUPS[0]);
             CatalogEntry {
                 id: p.id,
-                name: p.name,
-                description: p.description,
+                name: translate(p.name),
+                description: translate(p.description),
                 scores: p.scores,
                 download_mb: p.download_mb,
                 disk_mb: p.disk_mb,
-                license: p.license,
+                license: translate(p.license),
                 source_url: p.source_url,
                 group: p.group,
-                group_name: g.name,
-                group_description: g.description,
-                format: p.format,
+                group_name: translate(g.name),
+                group_description: translate(g.description),
+                format: translate(p.format),
                 expert_harmony: p.group == "dcml",
                 installed: pack_complete(&folder),
                 in_library: packs.iter().any(|have| covers(have, p.id)).then(|| lib_name.clone()),
@@ -1041,7 +1076,7 @@ pub async fn library_download(
 /// baut sie danach neu auf.
 #[tauri::command]
 pub async fn library_enrich(app: AppHandle, state: State<'_, AppState>) -> CmdResult<LibraryInfo> {
-    let packs = lock(&state.library)?.as_ref().map(|l| l.packs.clone()).ok_or("Keine Bibliothek geladen.")?;
+    let packs = lock(&state.library)?.as_ref().map(|l| l.packs.clone()).ok_or_else(|| tr!("No library loaded."))?;
     let root = default_root(&app);
     let dirs: Vec<PathBuf> = packs
         .iter()
@@ -1051,13 +1086,13 @@ pub async fn library_enrich(app: AppHandle, state: State<'_, AppState>) -> CmdRe
         .filter(|d| d.is_dir() && !d.join(pdmx::META_FILE).is_file())
         .collect();
     let Some(first) = dirs.first() else {
-        return Err("Genre und Komponist liegen schon vor (oder die Bibliothek enthält keine PDMX-Partituren).".into());
+        return Err(tr!("Genre and composer are already there (or the library contains no PDMX scores)."));
     };
     {
         let mut s = lock(&state.library_status)?;
         check_idle(&s)?;
         s.download = Some(DownloadProgress {
-            name: "Kategorien".into(),
+            name: tr!("Categories"),
             phase: "Kategorien".into(),
             folder: first.display().to_string(),
             files: 0,
@@ -1076,8 +1111,9 @@ pub async fn library_enrich(app: AppHandle, state: State<'_, AppState>) -> CmdRe
             let st = handle.state::<AppState>();
             let mut found = 0;
             let mut error = None;
+            let label = tr!("Categories");
             for dir in &dirs {
-                match fetch_metadata(&handle, dir, "Kategorien") {
+                match fetch_metadata(&handle, dir, &label) {
                     Ok(n) => found += n,
                     Err(e) => error = Some(e),
                 }
@@ -1087,7 +1123,13 @@ pub async fn library_enrich(app: AppHandle, state: State<'_, AppState>) -> CmdRe
             }
             let result = match error {
                 Some(e) if found == 0 => Err(e),
-                _ => start_rebuild(&handle, format!("Genre/Komponist für {} Partituren geladen. ", fmt_de(found))),
+                _ => start_rebuild(
+                    &handle,
+                    format!(
+                        "{} ",
+                        trn!(found, "Genre/composer loaded for {count} score.", "Genre/composer loaded for {count} scores.", count = fmt_num(found))
+                    ),
+                ),
             };
             if let Err(e) = result {
                 if let Ok(mut s) = st.library_status.lock() {
@@ -1120,14 +1162,14 @@ fn fetch_metadata(handle: &AppHandle, dir: &Path, name: &str) -> Result<usize, S
             d.total_bytes = PDMX_CSV_BYTES;
             d.target = None;
         }
-        s.message = Some(format!("{name}: lade Genre und Komponist (PDMX.csv) …"));
+        s.message = Some(tr!("{name}: loading genre and composer (PDMX.csv) …", name = name));
     }
     emit_info(handle);
     let bytes = Arc::new(AtomicU64::new(0));
     // reißt die Verbindung ab, geht es an derselben Stelle weiter
     let mut dl = fetch::ResumingDownload::new(PDMX_CSV_URL, &st.download_child, &st.library_cancel, |pos, n, why| {
         if let Ok(mut s) = st.library_status.lock() {
-            s.message = Some(format!("{name}: Verbindung unterbrochen ({why}) – mache bei {} weiter (Verbindung {n}) …", mb_de(pos)));
+            s.message = Some(connection_lost(name, why, pos, n));
         }
         emit_info(handle);
     })
@@ -1160,9 +1202,9 @@ fn fetch_metadata(handle: &AppHandle, dir: &Path, name: &str) -> Result<usize, S
     drop(dl);
     let meta = match result {
         Ok(m) => m,
-        Err(_) if st.library_cancel.load(Ordering::SeqCst) => return Err(format!("{name}: abgebrochen.")),
-        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => return Err(format!("{name}: abgebrochen.")),
-        Err(e) => return Err(format!("{name}: Genre/Komponist nicht geladen: {e}")),
+        Err(_) if st.library_cancel.load(Ordering::SeqCst) => return Err(tr!("{name}: cancelled.", name = name)),
+        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => return Err(tr!("{name}: cancelled.", name = name)),
+        Err(e) => return Err(tr!("{name}: genre/composer not loaded: {error}", name = name, error = e)),
     };
     pdmx::save_meta(&dir.join(pdmx::META_FILE), &meta).map_err(|e| e.to_string())?;
     Ok(meta.len())
@@ -1181,7 +1223,7 @@ pub enum Started {
 }
 
 fn find_pack(id: &str) -> CmdResult<&'static Pack> {
-    PACKS.iter().find(|p| p.id == id).ok_or_else(|| format!("Unbekanntes Paket: {id} (verfügbar: {})", pack_ids().join(", ")))
+    PACKS.iter().find(|p| p.id == id).ok_or_else(|| tr!("Unknown pack: {id} (available: {ids})", id = id, ids = pack_ids().join(", ")))
 }
 
 /// Zielordner eines Auftrags: der angegebene oder der Standardordner des Pakets.
@@ -1205,10 +1247,15 @@ fn library_packs(app: &AppHandle, lib_id: &str) -> Option<Vec<String>> {
 
 /// Fehler, wenn die Zielbibliothek das Paket schon enthält (oder fehlt).
 fn check_contained(app: &AppHandle, pack: &Pack, item: &QueuedDownload) -> CmdResult<()> {
-    let packs = library_packs(app, &item.library).ok_or_else(|| format!("Die Bibliothek „{}“ gibt es nicht mehr.", item.library_name))?;
+    let packs = library_packs(app, &item.library).ok_or_else(|| tr!("The library \"{library}\" no longer exists.", library = item.library_name))?;
     if let Some(have) = packs.iter().find(|have| covers(have, pack.id)) {
-        let via = if have == pack.id { String::new() } else { format!(" (über „{}“)", pack_name(have).unwrap_or(have.clone())) };
-        return Err(format!("„{}“ ist in „{}“ schon enthalten{via}.", pack_name(pack.id).unwrap_or_default(), item.library_name));
+        let (name, library) = (pack_name(pack.id).unwrap_or_default(), &item.library_name);
+        return Err(if have == pack.id {
+            tr!("\"{name}\" is already in \"{library}\".", name = name, library = library)
+        } else {
+            let via = pack_name(have).unwrap_or(have.clone());
+            tr!("\"{name}\" is already in \"{library}\" (via \"{via}\").", name = name, library = library, via = via)
+        });
     }
     Ok(())
 }
@@ -1225,7 +1272,7 @@ pub fn start_download(app: &AppHandle, id: &str, folder: Option<&str>, with_meta
     let (lib_id, lib_name) = active(&state)?;
     let item = QueuedDownload {
         id: pack.id.to_string(),
-        name: pack_name(pack.id).unwrap_or_else(|| pack.name.to_string()),
+        name: pack_name(pack.id).unwrap_or_else(|| translate(pack.name)),
         library: lib_id,
         library_name: lib_name,
         folder: folder.map(str::trim).filter(|f| !f.is_empty()).map(|f| f.trim_matches('"').to_string()),
@@ -1237,15 +1284,22 @@ pub fn start_download(app: &AppHandle, id: &str, folder: Option<&str>, with_meta
     let mut s = lock(&state.library_status)?;
     // Schon beauftragt (dasselbe Paket oder ein größeres, das es enthält)?
     let same = |q: &QueuedDownload| q.library == item.library && covers(&q.id, pack.id);
-    let via = |q: &QueuedDownload| if q.id == pack.id { String::new() } else { format!(" (über „{}“)", q.name) };
     if let Some(q) = s.pipeline.as_ref().filter(|q| same(q)) {
-        return Err(format!("„{}“ wird gerade geladen{}.", item.name, via(q)));
+        return Err(if q.id == pack.id {
+            tr!("\"{name}\" is being downloaded right now.", name = item.name)
+        } else {
+            tr!("\"{name}\" is being downloaded right now (via \"{via}\").", name = item.name, via = q.name)
+        });
     }
     if let Some(q) = s.queue.iter().find(|q| same(q)) {
-        return Err(format!("„{}“ wartet schon in der Warteschlange{}.", item.name, via(q)));
+        return Err(if q.id == pack.id {
+            tr!("\"{name}\" is already waiting in the queue.", name = item.name)
+        } else {
+            tr!("\"{name}\" is already waiting in the queue (via \"{via}\").", name = item.name, via = q.name)
+        });
     }
     if s.loading {
-        return Err("Die Bibliothek wird noch geladen – einen Moment.".into());
+        return Err(tr!("The library is still loading – just a moment."));
     }
     // Warten schon welche, kommt es hinten an – auch in der kurzen Pause zwischen zwei Aufträgen.
     if check_idle(&s).is_err() || !s.queue.is_empty() {
@@ -1309,7 +1363,7 @@ fn start_queued(app: &AppHandle, item: QueuedDownload) {
         Ok(p) => p,
         Err(e) => {
             if let Ok(mut s) = st.library_status.lock() {
-                s.message = Some(format!("Warteschlange: „{}“ übersprungen – {e}", item.name));
+                s.message = Some(tr!("Queue: \"{name}\" skipped – {error}", name = item.name, error = e));
             }
             emit_info(app);
             return;
@@ -1326,7 +1380,7 @@ fn start_queued(app: &AppHandle, item: QueuedDownload) {
     let name = item.name.clone();
     if let Err(e) = begin_download(app, pack, item, dir, present, s) {
         if let Ok(mut s) = st.library_status.lock() {
-            s.message = Some(format!("Warteschlange: „{name}“ – {e}"));
+            s.message = Some(tr!("Queue: \"{name}\" – {error}", name = name, error = e));
         }
         emit_info(app);
     }
@@ -1338,16 +1392,18 @@ fn begin_download(app: &AppHandle, pack: &'static Pack, item: QueuedDownload, di
     let state = app.state::<AppState>();
     let with_meta = item.with_meta;
     let job = Job { name: pack.name.to_string(), with_meta, phase: JobPhase::Laden, attempts: 0, library: Some(item.library.clone()), pack: Some(pack.id.to_string()) };
+    // Display name (the job file keeps the untranslated one)
+    let shown = translate(pack.name);
     if present {
         s.building = Some((0, 0));
-        s.message = Some(format!("{}: Partituren liegen schon im Ordner – übernehme in „{}“ …", pack.name, item.library_name));
+        s.message = Some(tr!("{name}: the scores are already in the folder – adding them to \"{library}\" …", name = shown, library = item.library_name));
     } else {
         let (target, total_bytes, host) = match pack.source {
             Source::Pdmx(limit) => (limit, PDMX_BYTES, "zenodo.org"),
             Source::Repos(_) => (Some(pack.scores), pack.download_mb as u64 * 1_000_000, "github.com"),
         };
         s.download = Some(DownloadProgress {
-            name: pack.name.into(),
+            name: shown.clone(),
             phase: "Partituren".into(),
             folder: dir.display().to_string(),
             files: 0,
@@ -1355,14 +1411,14 @@ fn begin_download(app: &AppHandle, pack: &'static Pack, item: QueuedDownload, di
             bytes: 0,
             total_bytes,
         });
-        s.message = Some(format!("{}: verbinde mit {host} …", pack.name));
+        s.message = Some(tr!("{name}: connecting to {host} …", name = shown, host = host));
     }
     s.pipeline = Some(item);
     drop(s);
     state.library_cancel.store(false, Ordering::SeqCst);
     emit_info(app);
     let handle = app.clone();
-    let name = pack.name;
+    let name = shown;
     let spawned = std::thread::Builder::new()
         .name("klang-download".into())
         .spawn(move || {
@@ -1384,20 +1440,24 @@ fn begin_download(app: &AppHandle, pack: &'static Pack, item: QueuedDownload, di
                 write_job(&handle, &dir, &job);
             }
             let result = match pack.source {
-                Source::Pdmx(limit) => download_pack(&handle, &dir, name, limit),
+                Source::Pdmx(limit) => download_pack(&handle, &dir, &name, limit),
                 Source::Repos(repos) => download_repos(&handle, &dir, pack, repos),
             };
             match result {
                 Ok(stats) => {
+                    let (files, count) = (stats.files, fmt_num(stats.files));
                     let mut what = if stats.existing == stats.files {
-                        format!("{name}: {} Dateien waren schon da. ", stats.files)
+                        trn!(files, "{name}: {count} file was already there.", "{name}: {count} files were already there.", name = name, count = count)
                     } else {
-                        format!("{name}: {} Dateien geladen. ", stats.files)
+                        trn!(files, "{name}: {count} file downloaded.", "{name}: {count} files downloaded.", name = name, count = count)
                     };
+                    what.push(' ');
                     match stats.resumed {
                         0 => {}
-                        1 => what.push_str("Die Verbindung riss einmal ab und wurde fortgesetzt. "),
-                        n => what.push_str(&format!("Die Verbindung riss {n}-mal ab und wurde jeweils fortgesetzt. ")),
+                        n => {
+                            what.push_str(&trn!(n, "The connection dropped once and was resumed.", "The connection dropped {n} times and was resumed each time."));
+                            what.push(' ');
+                        }
                     }
                     // Partituren komplett: ab hier wird beim nächsten Start ohne Download fortgesetzt
                     set_phase(&handle, &dir, if with_meta { JobPhase::Metadaten } else { JobPhase::Indizieren });
@@ -1450,15 +1510,17 @@ pub async fn library_dequeue(app: AppHandle, state: State<'_, AppState>, id: Opt
 /// Lädt die passenden Dateien einer GitHub-Sammlung (läuft im Hintergrund-Thread).
 fn download_repos(handle: &AppHandle, dir: &Path, pack: &Pack, repos: &[Repo]) -> Result<ExtractStats, String> {
     let st = handle.state::<AppState>();
-    let name = pack.name;
-    std::fs::create_dir_all(dir).map_err(|e| format!("Ordner {} lässt sich nicht anlegen: {e}", dir.display()))?;
+    let name = translate(pack.name);
+    let name = name.as_str();
+    std::fs::create_dir_all(dir).map_err(|e| folder_error(dir, e))?;
     let _ = std::fs::write(
         dir.join("QUELLE.txt"),
-        format!(
-            "{name}\n\n{}\n\nQuelle: {}\nLizenz: {}\n\nHeruntergeladen und indiziert von Klangwelt.\n",
-            pack.description,
-            repos.iter().map(|r| format!("https://github.com/{}", r.repo)).collect::<Vec<_>>().join(", "),
-            pack.license
+        tr!(
+            "{name}\n\n{description}\n\nSource: {source}\nLicense: {license}\n\nDownloaded and indexed by Klangwelt.\n",
+            name = name,
+            description = translate(pack.description),
+            source = repos.iter().map(|r| format!("https://github.com/{}", r.repo)).collect::<Vec<_>>().join(", "),
+            license = translate(pack.license)
         ),
     );
     // Dateilisten
@@ -1469,13 +1531,13 @@ fn download_repos(handle: &AppHandle, dir: &Path, pack: &Pack, repos: &[Repo]) -
     let mut api_ok = true;
     for r in repos {
         if st.library_cancel.load(Ordering::SeqCst) {
-            return Err(format!("{name}: Download abgebrochen."));
+            return Err(tr!("{name}: download cancelled.", name = name));
         }
         if let Ok(mut s) = st.library_status.lock() {
-            s.message = Some(format!("{name}: lade die Dateiliste von {} …", r.repo));
+            s.message = Some(tr!("{name}: loading the file list from {repo} …", name = name, repo = r.repo));
         }
         emit_info(handle);
-        let live = if api_ok { fetch::github_tree(r.repo, r.branch) } else { Err(std::io::Error::other("übersprungen")) };
+        let live = if api_ok { fetch::github_tree(r.repo, r.branch) } else { Err(std::io::Error::other(tr!("skipped"))) };
         let tree = match live {
             Ok(t) => t,
             Err(e) => {
@@ -1498,7 +1560,7 @@ fn download_repos(handle: &AppHandle, dir: &Path, pack: &Pack, repos: &[Repo]) -
         }));
     }
     if files.is_empty() {
-        return Err(format!("{name}: keine passenden Dateien in der Quelle gefunden."));
+        return Err(tr!("{name}: no matching files found in the source.", name = name));
     }
     let total_bytes: u64 = files.iter().map(|f| f.size).sum();
     if let Ok(mut s) = st.library_status.lock() {
@@ -1521,16 +1583,17 @@ fn download_repos(handle: &AppHandle, dir: &Path, pack: &Pack, repos: &[Repo]) -
     });
     let stats = match result {
         Ok(s) => s,
-        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => return Err(format!("{name}: Download abgebrochen.")),
-        Err(e) => return Err(format!("{name}: Download fehlgeschlagen: {e}")),
+        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => return Err(tr!("{name}: download cancelled.", name = name)),
+        Err(e) => return Err(tr!("{name}: download failed: {error}", name = name, error = e)),
     };
     // Einzelne Ausfälle hinnehmen, viele nicht (nächster Versuch lädt nur, was fehlt).
     if stats.failed > 0 && stats.failed * 10 > files.len() {
-        return Err(format!(
-            "{name}: {} von {} Dateien nicht geladen (z. B. {}) – „Herunterladen“ versucht es erneut.",
-            stats.failed,
-            files.len(),
-            stats.failed_paths.join(", ")
+        return Err(tr!(
+            "{name}: {failed} of {total} files not downloaded (e.g. {examples}) – \"Download\" tries again.",
+            name = name,
+            failed = fmt_num(stats.failed),
+            total = fmt_num(files.len()),
+            examples = stats.failed_paths.join(", ")
         ));
     }
     write_collection_meta(dir);
@@ -1553,14 +1616,14 @@ fn write_collection_meta(dir: &Path) {
 /// Download + Entpacken (läuft im Hintergrund-Thread).
 fn download_pack(handle: &AppHandle, dir: &Path, name: &str, limit: Option<usize>) -> Result<ExtractStats, String> {
     let st = handle.state::<AppState>();
-    std::fs::create_dir_all(dir).map_err(|e| format!("Ordner {} lässt sich nicht anlegen: {e}", dir.display()))?;
+    std::fs::create_dir_all(dir).map_err(|e| folder_error(dir, e))?;
     let _ = std::fs::write(
         dir.join("QUELLE.txt"),
-        format!(
-            "{name}\n\nQuelle: PDMX – A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing\n\
-             (Long, Novack, Berg-Kirkpatrick, McAuley 2024), {PDMX_RECORD}\n\
-             Lizenz: {PDMX_LICENSE}\nBei Verwendung bitte das Paper zitieren (siehe https://github.com/pnlong/PDMX).\n\
-             Heruntergeladen und indiziert von Klangwelt.\n"
+        tr!(
+            "{name}\n\nSource: PDMX – A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing\n(Long, Novack, Berg-Kirkpatrick, McAuley 2024), {record}\nLicense: {license}\nPlease cite the paper when you use it (see https://github.com/pnlong/PDMX).\nDownloaded and indexed by Klangwelt.\n",
+            name = name,
+            record = PDMX_RECORD,
+            license = translate(PDMX_LICENSE)
         ),
     );
     let bytes = Arc::new(AtomicU64::new(0));
@@ -1570,7 +1633,7 @@ fn download_pack(handle: &AppHandle, dir: &Path, name: &str, limit: Option<usize
     let url = std::env::var("KLANGWELT_PDMX_URL").ok().filter(|u| !u.is_empty()).unwrap_or_else(|| PDMX_MXL_URL.to_string());
     let mut dl = fetch::ResumingDownload::new(&url, &st.download_child, &st.library_cancel, |pos, n, why| {
         if let Ok(mut s) = st.library_status.lock() {
-            s.message = Some(format!("{name}: Verbindung unterbrochen ({why}) – mache bei {} weiter (Verbindung {n}) …", mb_de(pos)));
+            s.message = Some(connection_lost(name, why, pos, n));
         }
         emit_info(handle);
     })
@@ -1597,21 +1660,42 @@ fn download_pack(handle: &AppHandle, dir: &Path, name: &str, limit: Option<usize
     drop(dl);
     match result {
         Ok(stats) => Ok(ExtractStats { resumed, ..stats }),
-        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => Err(format!("{name}: Download abgebrochen.")),
-        Err(e) => Err(format!(
-            "{name}: Download nach {} Partituren abgebrochen ({e}) – „Herunterladen“ macht weiter, vorhandene Partituren werden übersprungen.",
-            fmt_de(files.get())
+        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => Err(tr!("{name}: download cancelled.", name = name)),
+        Err(e) => Err(trn!(
+            files.get(),
+            "{name}: download stopped after {count} score ({error}) – \"Download\" continues, scores already there are skipped.",
+            "{name}: download stopped after {count} scores ({error}) – \"Download\" continues, scores already there are skipped.",
+            name = name,
+            count = fmt_num(files.get()),
+            error = e
         )),
     }
 }
 
 /// Bytes als „812 MB“ bzw. „1,4 GB“.
-fn mb_de(bytes: u64) -> String {
+/// (Decimal separator of the chosen language.)
+fn mb_text(bytes: u64) -> String {
     if bytes >= 1_000_000_000 {
-        format!("{:.1} GB", bytes as f64 / 1e9).replace('.', ",")
+        format!("{:.1} GB", bytes as f64 / 1e9).replace('.', &libraries::separators().1.to_string())
     } else {
         format!("{} MB", bytes / 1_000_000)
     }
+}
+
+/// Status message: the connection dropped and the download resumes at `pos`.
+fn connection_lost(name: &str, why: &str, pos: u64, connection: u32) -> String {
+    tr!(
+        "{name}: connection interrupted ({why}) – resuming at {position} (connection {connection}) …",
+        name = name,
+        why = why,
+        position = mb_text(pos),
+        connection = connection
+    )
+}
+
+/// Error: the folder for a pack can't be created.
+fn folder_error(dir: &Path, e: std::io::Error) -> String {
+    tr!("Can't create the folder {folder}: {error}", folder = dir.display(), error = e)
 }
 
 /// Bricht einen laufenden Download oder Indexlauf ab.

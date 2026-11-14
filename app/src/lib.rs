@@ -77,7 +77,7 @@ struct CloseInfo {
 async fn export_reveal(path: String) -> Result<(), String> {
     let p = std::path::PathBuf::from(&path);
     if !p.exists() {
-        return Err(format!("{path} gibt es nicht mehr"));
+        return Err(klang_i18n::tr!("{path} no longer exists", path = path));
     }
     #[cfg(windows)]
     {
@@ -129,7 +129,9 @@ fn invoke_core(invoke: Invoke) {
     };
     if long {
         resolver.respond_async_serialized(async move {
-            tauri::async_runtime::spawn_blocking(run).await.map_err(|e| InvokeError(serde_json::Value::String(format!("Abgebrochen: {e}"))))?
+            tauri::async_runtime::spawn_blocking(run)
+                .await
+                .map_err(|e| InvokeError(serde_json::Value::String(klang_i18n::tr!("Cancelled: {error}", error = e))))?
         });
     } else {
         resolver.respond_async_serialized(async move { run() });
