@@ -1,0 +1,14 @@
+{
+  "name": "klangwelt-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Klangwelt as a desktop app (Tauri) – core and user interface in the klangwelt/ submodule",
+  "scripts": {
+    "setup": "git submodule update --init && npm --prefix klangwelt/ui ci",
+    "build:ui": "npm --prefix klangwelt/ui run build",
+    "release": "npm run build:ui && cargo build --release -p klangwelt --features tauri/custom-protocol",
+    "test:e2e": "node --test --test-concurrency=1 \"tests/e2e/*.test.mjs\"",
+    "licenses": "node klangwelt/ui/scripts/third-party-licenses.mjs --root=."
+  }
+}

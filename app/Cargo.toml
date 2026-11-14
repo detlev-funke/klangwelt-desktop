@@ -1,0 +1,29 @@
+[package]
+name = "klangwelt"
+description = "Klangwelt – make music, record, recognize, shape sounds"
+version.workspace = true
+edition.workspace = true
+publish = false
+default-run = "klangwelt"
+
+[lib]
+name = "klangwelt_lib"
+# Desktop app only: the code goes straight into klangwelt.exe. Android/iOS would
+# additionally need "cdylib" or "staticlib" in Tauri – add them back only then
+# (otherwise every build produces an unused DLL and a huge .lib).
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+tauri = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+klang-core = { workspace = true }
+klang-dsp = { workspace = true }
+klang-music = { workspace = true }
+klang-engine = { workspace = true }
+klang-mcp = { workspace = true }
+klang-app = { workspace = true, features = ["opus"] }
+zip = { workspace = true }

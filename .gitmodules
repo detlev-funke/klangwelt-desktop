@@ -1,0 +1,3 @@
+[submodule "klangwelt"]
+	path = klangwelt
+	url = ../klangwelt

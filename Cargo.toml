@@ -1,0 +1,39 @@
+[workspace]
+resolver = "2"
+members = ["app"]
+# The core lives in the klangwelt/ submodule – a workspace of its own, used here
+# only as a path dependency (its crates inherit their dependencies from there).
+exclude = ["klangwelt"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+tauri = { version = "2", features = [] }
+tauri-build = { version = "2", features = [] }
+
+klang-dsp = { path = "klangwelt/crates/klang-dsp" }
+klang-core = { path = "klangwelt/crates/klang-core" }
+klang-music = { path = "klangwelt/crates/klang-music" }
+klang-engine = { path = "klangwelt/crates/klang-engine" }
+klang-mcp = { path = "klangwelt/crates/klang-mcp" }
+klang-app = { path = "klangwelt/crates/klang-app", default-features = false }
+
+# DSP has to be fast in debug builds, too (as in klangwelt/Cargo.toml –
+# profiles only apply from the workspace being built).
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev.package.klang-dsp]
+opt-level = 3
+
+[profile.dev.package.klang-music]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 4

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- macOS: Tauri übernimmt diese Einträge beim Bündeln in Klangwelt.app.
+     Ohne NSMicrophoneUsageDescription beendet macOS die App beim ersten
+     Zugriff aufs Mikrofon, statt nach der Erlaubnis zu fragen. -->
+<plist version="1.0">
+<dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Klangwelt nimmt über das Mikrofon auf – Gesang, Instrumente oder Summen für die Melodiesuche.</string>
+</dict>
+</plist>
