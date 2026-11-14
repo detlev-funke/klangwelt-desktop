@@ -1868,6 +1868,7 @@ name = "klang-engine"
 version = "0.1.0"
 dependencies = [
  "cpal",
+ "klang-dsp",
  "klang-i18n",
  "rtrb",
 ]

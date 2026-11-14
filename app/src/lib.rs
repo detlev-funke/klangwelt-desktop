@@ -145,6 +145,8 @@ fn status_loop(handle: tauri::AppHandle) {
     for tick in 0u64.. {
         std::thread::sleep(Duration::from_millis(33));
         let st = handle.state::<AppState>();
+        // work on the side: pre-render clips when the live mixer can't keep up
+        st.tick();
         if handle.emit("engine-status", st.status()).is_err() {
             break;
         }
