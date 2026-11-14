@@ -73,26 +73,26 @@ test("Enter und Pos1 wirken wie Stopp", async () => {
   }
 });
 
-test("Metronom: der zuletzt gewählte Zustand gilt auch nach einem Neustart", async () => {
+test("Metronome: off at first, the last chosen state survives a restart", async () => {
   const metro = () => app.eval(() => T.st.snapshot.peek().engine.metronome);
-  assert.equal(await metro(), true, "beim ersten Start an");
+  assert.equal(await metro(), false, "off on first start");
   await app.clickOn("kw-transport .btn[title='Metronom']");
-  await app.waitFor(() => T.st.snapshot.peek().engine.metronome === false, { what: "aus" });
-  // Neustart mit demselben Profil: bleibt aus
+  await app.waitFor(() => T.st.snapshot.peek().engine.metronome === true, { what: "on" });
+  // restart with the same profile: stays on
   const errors = app.errors;
   await app.stop();
   app = await startApp({ tmp: app.tmp });
   app.errors.push(...errors);
-  assert.equal(await metro(), false, "nach dem Neustart aus");
-  assert.equal(await app.eval(() => T.$("kw-transport .btn[title='Metronom']").classList.contains("on")), false);
-  // vom Agenten eingeschaltet: auch das wird gemerkt
-  await app.mcp("set_metronome", { enabled: true });
-  await app.waitFor(() => T.st.snapshot.peek().engine.metronome === true, { what: "an" });
-  assert.equal(JSON.parse(readFileSync(join(app.tmp, "bibliothek", "einstellungen.json"), "utf8")).metronom, true, "in den Einstellungen");
+  assert.equal(await metro(), true, "on after the restart");
+  assert.equal(await app.eval(() => T.$("kw-transport .btn[title='Metronom']").classList.contains("on")), true);
+  // switched off by the agent: remembered as well
+  await app.mcp("set_metronome", { enabled: false });
+  await app.waitFor(() => T.st.snapshot.peek().engine.metronome === false, { what: "off" });
+  assert.equal(JSON.parse(readFileSync(join(app.tmp, "bibliothek", "einstellungen.json"), "utf8")).metronom, false, "in the settings");
   await app.stop();
   app = await startApp({ tmp: app.tmp });
   app.errors.push(...errors);
-  assert.equal(await metro(), true, "nach dem zweiten Neustart an");
+  assert.equal(await metro(), false, "off after the second restart");
 });
 
 test("Metronom-Knopf schaltet um", async () => {
