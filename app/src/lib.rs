@@ -141,20 +141,15 @@ fn invoke_core(invoke: Invoke) {
 const LONG_RUNNING: &[&str] = &["export_run"];
 
 fn status_loop(handle: tauri::AppHandle) {
-    let mut connected = false;
-    for tick in 0u64.. {
+    loop {
         std::thread::sleep(Duration::from_millis(33));
         let st = handle.state::<AppState>();
-        // work on the side: pre-render clips when the live mixer can't keep up
+        // work on the side: pre-render clips when the live mixer can't keep up; the
+        // agent indicator (listening, working, connected – also timed out) is reported
+        // from here too, as in the browser
         st.tick();
         if handle.emit("engine-status", st.status()).is_err() {
             break;
-        }
-        // Agent connected/disconnected (also timed out) – check about twice a second
-        if tick % 15 == 0 && st.agent_connected() != connected {
-            let view = st.chat_view();
-            connected = view.agent_connected;
-            let _ = handle.emit("chat-changed", view);
         }
     }
 }

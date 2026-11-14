@@ -231,6 +231,135 @@ test("chat: every message carries the situation – audible, muted, solo tracks 
   await app.mcp("chat_reply", { replyTo: polled.auftraege[0].id, text: "ok" });
 });
 
+/** Tool call that must fail; returns the error text. */
+async function mcpError(name, args = {}) {
+  const r = await app.mcpRaw("tools/call", { name, arguments: args });
+  assert.equal(r.isError, true, `${name} sollte fehlschlagen: ${JSON.stringify(r).slice(0, 300)}`);
+  return r.content[0].text;
+}
+/** Sends a task through the chat window's input; returns its message. */
+async function sendTask(text) {
+  await app.eval(() => T.st.showPanel("agent"));
+  await app.waitFor(() => !!T.$("textarea.chat-input"), { what: "Chatfeld" });
+  await app.eval(async (text) => {
+    const ta = T.$("textarea.chat-input");
+    ta.value = text;
+    ta.dispatchEvent(new Event("input"));
+    T.$(".chat-compose .btn").click();
+  }, text);
+  return app.waitFor((text) => T.st.chat.peek().messages.findLast((m) => m.from === "user" && m.text === text) ?? null, { what: `Auftrag „${text}“` }, text);
+}
+const meta = (id) => app.eval((i) => T.$(`.chat-list .msg[data-id="${i}"] .meta`)?.textContent ?? "", id);
+
+test("prompts and instructions describe the roles listener, dispatcher and worker", async () => {
+  for (const w of ["Zuhörer", "\"zuhoeren\"", "\"arbeiten\"", "\"client\":\"zuhoerer\"", "batch", "SendMessage"]) assert.ok(prompt.includes(w), `${w} fehlt im Prompt`);
+  const list = (await app.mcpRaw("prompts/list")).prompts.map((p) => p.name);
+  assert.deepEqual(list.sort(), ["arbeiten", "zuhoeren"]);
+  const listener = (await app.mcpRaw("prompts/get", { name: "zuhoeren" })).messages[0].content.text;
+  assert.match(listener, /client "zuhoerer"/);
+  assert.match(listener, /done=false/);
+  assert.match(listener, /to: "main"/);
+  const worker = (await app.mcpRaw("prompts/get", { name: "arbeiten" })).messages[0].content.text;
+  for (const w of ["ifRevision", "batch", "cancelRequested", "chat_peek", "C4 1"]) assert.ok(worker.includes(w), `${w} fehlt beim Arbeiter`);
+  const init = await app.mcpRaw("initialize", { protocolVersion: "2025-06-18", capabilities: {} });
+  assert.match(init.instructions, /Roles/);
+  assert.match(init.instructions, /At most one worker per track/);
+  const tools = (await app.mcpRaw("tools/list")).tools.map((t) => t.name);
+  for (const t of ["chat_peek", "batch"]) assert.ok(tools.includes(t), `${t} fehlt`);
+});
+
+test("chat: chat_poll reserves for its client, offers again after the lease, chat_peek doesn't take", async () => {
+  const task = await sendTask("Bass wärmer");
+  const got = await app.mcp("chat_poll", { timeoutSeconds: 3, client: "test", leaseSeconds: 10 });
+  assert.deepEqual(got.auftraege.map((a) => a.id), [task.id]);
+  await app.waitFor((i) => T.$(`.chat-list .msg[data-id="${i}"] .meta`)?.textContent.includes("angenommen von test"), { what: "angenommen von test" }, task.id);
+  await app.waitFor((i) => T.$(".chip.agent").textContent.includes(`arbeitet an #${i}`), { what: "Agent … arbeitet an #n" }, task.id);
+  // a second poller doesn't get it; peek sees it without taking it
+  assert.deepEqual((await app.mcp("chat_poll", { timeoutSeconds: 1, client: "zuhoerer" })).auftraege, []);
+  const peek = await app.mcp("chat_peek", { sinceId: task.id - 1 });
+  assert.deepEqual(peek.messages.map((m) => [m.id, m.status, m.claimedBy]), [[task.id, "inProgress", "test"]]);
+  // no reply within the lease → offered again (the waiting poll wakes up by itself)
+  const t0 = Date.now();
+  const again = await app.mcp("chat_poll", { timeoutSeconds: 20, client: "zuhoerer" });
+  assert.deepEqual(again.auftraege.map((a) => [a.id, a.redelivered]), [[task.id, 1]]);
+  assert.ok(Date.now() - t0 < 15000, `${Date.now() - t0} ms`);
+  assert.match(await meta(task.id), /angenommen von zuhoerer/);
+  // a reply confirms it – then it stays with the worker
+  await app.mcp("chat_reply", { replyTo: task.id, text: "Bin dran.", done: false, client: "zuhoerer" });
+  assert.deepEqual((await app.mcp("chat_poll", { timeoutSeconds: 1, client: "test" })).auftraege, []);
+  await app.mcp("chat_reply", { replyTo: task.id, text: "Bass ist wärmer." });
+  await app.waitFor((i) => T.st.chat.peek().messages.find((m) => m.id === i)?.status === "erledigt", { what: "erledigt" }, task.id);
+});
+
+test("chat: stop button and \"Stopp\" – cancelRequested in every tool response, waiting tasks cancelled", async () => {
+  const task = await sendTask("Bau ein Jazz-Stück");
+  await app.mcp("chat_poll", { timeoutSeconds: 3, client: "zuhoerer" });
+  await app.mcp("chat_reply", { replyTo: task.id, text: "Bin dran.", done: false });
+  await app.waitFor((i) => T.$(`.chat-list .msg[data-id="${i}"] .stop-task`), { what: "Stopp-Knopf" }, task.id);
+  await app.eval((i) => T.$(`.chat-list .msg[data-id="${i}"] .stop-task`).click(), task.id);
+  await app.waitFor((i) => T.$(`.chat-list .msg[data-id="${i}"] .meta`)?.textContent.includes("Stopp angefordert"), { what: "Stopp angefordert" }, task.id);
+  assert.deepEqual((await app.mcp("get_project", { fields: ["name"] })).cancelRequested, [task.id]);
+  assert.match(await mcpError("execute", { commands: [{ type: "removeTrack", trackId: 999999 }] }), /cancelRequested/);
+  const stop = (await app.mcp("chat_poll", { timeoutSeconds: 3, client: "zuhoerer" })).auftraege;
+  assert.equal(stop.length, 1);
+  assert.deepEqual(stop[0].cancels, [task.id]);
+  await app.mcp("chat_reply", { replyTo: task.id, text: "Gestoppt." });
+  await app.mcp("chat_reply", { replyTo: stop[0].id, text: "Ok." });
+  assert.equal((await app.mcp("get_project", { fields: ["name"] })).cancelRequested, undefined);
+  // typed "Stopp": a task nobody picked up is cancelled and not offered
+  const waiting = await sendTask("Danach Tempo 90");
+  const typed = await sendTask("Stopp");
+  assert.deepEqual(typed.cancels, [waiting.id]);
+  await app.waitFor((i) => T.$(`.chat-list .msg[data-id="${i}"] .meta`)?.textContent.includes("abgebrochen"), { what: "abgebrochen" }, waiting.id);
+  assert.deepEqual((await app.mcp("chat_poll", { timeoutSeconds: 1, client: "zuhoerer" })).auftraege.map((a) => a.id), [typed.id]);
+  await app.mcp("chat_reply", { replyTo: typed.id, text: "Nichts mehr offen." });
+});
+
+test("write tools: revision/ifRevision, placeholders, compact notes, get_project filters", async () => {
+  await app.reset();
+  const rev = (await app.mcp("get_project", { fields: ["tempoBpm"] })).revision;
+  const r = await app.mcp("execute", { ifRevision: rev, label: "Bass", commands: [
+    { type: "addTrack", track: { ref: "$bass", name: "Bass", kind: "instrument" } },
+    { type: "addClip", trackId: "$bass", clip: { ref: "$riff", startBeats: 0, source: { type: "notes", lengthBeats: 4, notes: "A2 1 · C3+E3 .5 v90 · r .5 · G3 2" } } },
+  ] });
+  const bass = r.ids.$bass;
+  assert.deepEqual(r.created.tracks, [bass]);
+  assert.deepEqual(r.created.clips, [{ trackId: bass, clipId: r.ids.$riff }]);
+  assert.ok(r.revision > rev, "neue Revision");
+  assert.match(r.change, /Agent · Bass/);
+  const notes = await app.waitFor((id) => T.st.snapshot.peek().project.tracks.find((t) => t.id === id)?.clips[0]?.source.notes ?? null, { what: "Noten in der Oberfläche" }, bass);
+  assert.deepEqual(notes.map((n) => [n.pitch, n.startBeats, n.lengthBeats, n.velocity]), [[45, 0, 1, 100], [48, 1, 0.5, 90], [52, 1, 0.5, 90], [55, 2, 2, 90]]);
+  // stale revision: refused, nothing changes
+  assert.match(await mcpError("execute", { ifRevision: rev, commands: [{ type: "removeTrack", trackId: bass }] }), /changed in the meantime/);
+  assert.equal(await app.eval(() => T.st.snapshot.peek().project.tracks.length), 1);
+  const p = await app.mcp("get_project", { trackIds: [bass], fields: ["tracks.name", "tracks.clips"], includeNotes: false });
+  assert.deepEqual(Object.keys(p).sort(), ["revision", "tracks"]);
+  assert.deepEqual(Object.keys(p.tracks[0]).sort(), ["clips", "id", "name"]);
+  assert.equal(p.tracks[0].clips[0].source.noteCount, 4);
+});
+
+test("batch: several tools as one undo step, reverted at the first error", async () => {
+  await app.reset();
+  const r = await app.mcp("batch", { label: "Schlagzeug", calls: [
+    { tool: "create_instrument_track", args: { kind: "drums" } },
+    { tool: "execute", args: { commands: [{ type: "setTrack", trackId: "$0.trackId", patch: { gainDb: -5, name: "Drums" } }] } },
+    { tool: "write_drum_pattern", args: { genre: "House", trackId: "$0.trackId", bars: 1 } },
+  ] });
+  assert.equal(r.undoLabel, "Agent · Schlagzeug");
+  assert.deepEqual(r.created.tracks, [r.results[0].trackId]);
+  await app.waitFor(() => T.st.snapshot.peek().project.tracks.some((t) => t.name === "Drums" && t.clips.length >= 2), { what: "Drums mit Beat" });
+  assert.equal(await app.eval(() => T.st.snapshot.peek().undoLabel), "Agent · Schlagzeug");
+  await app.mcp("undo");
+  await app.waitFor(() => T.st.snapshot.peek().project.tracks.length === 0, { what: "ein Schritt zurück nimmt alles" });
+  const e = await mcpError("batch", { calls: [
+    { tool: "create_instrument_track", args: { kind: "synth" } },
+    { tool: "set_sound", args: { trackId: 999999, params: { filter: 0.5 } } },
+  ] });
+  assert.match(e, /Call 2 \(set_sound\)/);
+  await app.waitFor(() => T.st.snapshot.peek().project.tracks.length === 0, { what: "zurückgerollt" });
+  assert.equal(await app.eval(() => T.st.snapshot.peek().canRedo), true, "the undone batch stays redoable");
+});
+
 test("no errors in the window", () => {
   assert.deepEqual(app.errors, []);
 });

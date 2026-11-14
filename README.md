@@ -464,19 +464,36 @@ during playback the section currently playing is highlighted.
 
 You write tasks for the connected agent in the **Agent** window (Enter
 sends). The agent picks them up via `chat_poll` (long poll), works through them using the
-other MCP tools and replies with `chat_reply`. Each message shows its
-status (new → in progress → done). The indicator at the top right tells you how the
-agent is doing: **No agent connected** (the endpoint is waiting), **Agent ready**
-(an agent is connected) or **Agent listening** (it is currently waiting for tasks).
+other MCP tools and replies with `chat_reply`. Each message shows its number and
+status (waiting → in progress → done, or cancelled) and who took it ("claimed by zuhoerer").
+The indicator at the top right tells you how the agent is doing: **Agent listening**
+(a `chat_poll` is waiting for tasks), **Agent working on #n** (a task is in progress, or a
+tool call within the last minute), both at once (**Agent listening · working on #3**),
+**Agent ready** (an agent is connected but quiet) or **No agent connected** – only after
+more than a minute without any sign of the agent.
 Each message automatically carries the **context**
 (shown in small print below it): which tracks are audible, muted or soloed (with
 their ID) and which time range is selected in the tracks – so "make this
 louder" refers to what is currently playing and selected.
 
-To listen, the agent starts a **subagent** that takes over the loop
-`chat_poll` → execute → `chat_reply` in the background – so the agent itself stays
-available. This is already in the connection prompt (see
-[Connecting an agent](#connecting-an-agent)). Writing "Stop" in the chat ends the listener.
+**Roles**, so that someone always listens while others work: a **listener**
+(subagent on a small, fast model) only calls `chat_poll` and confirms every task at once
+with `chat_reply` (done=false); the **dispatcher** (the main session) starts a
+**worker** subagent for each task and passes follow-ups on to it; the worker carries
+out the task and finishes with `chat_reply` (done=true). At most one worker per track;
+project-wide changes (tempo, delete range, generated song) one after another. All of
+this is in the connection prompt (see [Connecting an agent](#connecting-an-agent)); the
+listener's and the worker's tasks are the MCP prompts `zuhoeren` and `arbeiten`.
+
+**Nothing gets lost:** `chat_poll` reserves a task for its client instead of using it
+up. Without a `chat_reply` within `leaseSeconds` (default 60) it is offered again – if a
+listener crashes or a second poller (a test, say) snatches it. `chat_peek` shows new
+messages without taking them away from the listener.
+
+**Stop:** the **Stop** button at a task – or a message like "Stop" / "Stop #3" – cancels
+tasks nobody has picked up yet. For a task in progress every tool response carries
+`cancelRequested: [3]` until the agent finishes it, so the worker notices without asking.
+The listener keeps listening; it ends only when you explicitly ask it to stop listening.
 
 **Waiting time:** `chat_poll` responds immediately when a task arrives, and otherwise
 after `timeoutSeconds` (up to 590 s) with an empty list. The prompt uses 280 s,
@@ -774,8 +791,9 @@ to be set up. The session then talks to the endpoint directly over HTTP (e.g. wi
 
 * `initialize` returns the app's working instructions, `tools/list` the
   tools, `tools/call` calls one.
-* To listen, it starts a subagent in the background that calls `chat_poll`
-  (280 s) in a loop.
+* To listen, it starts a listener subagent in the background (small model) that calls
+  `chat_poll` (280 s) in a loop and hands every task to the session, which starts a
+  worker subagent for it.
 * If the server responds with 401 (token set, see below), it asks for the
   token.
 
@@ -819,13 +837,15 @@ and play", "Analyze my last recording and make an instrument track from it".
 
 | Tool | Purpose |
 |---|---|
-| `get_project` | Read the project with track/clip IDs |
-| `execute` | Project commands (JSON as in the interface) as one undo step |
+| `get_project` | Read the project with track/clip IDs and its `revision`; `trackIds` / `fields` (e.g. `["tempoBpm", "tracks.name"]`) read only a part |
+| `execute` | Project commands (JSON as in the interface) as one undo step; `ifRevision` refuses if someone changed the project in the meantime; placeholders (`"ref": "$bass"`, then `"trackId": "$bass"`) – the response lists the IDs; notes also compact (`"C4 1 · E4 .5 v100 · G4 .5"`) |
+| `batch` | Several tool calls in a row as one undo step; stops at the first error and reverts the calls before it; `"$0.trackId"` uses a result of an earlier call |
 | `undo` / `redo` | Undo / Redo |
 | `transport`, `set_metronome` | Playback, position, metronome |
 | `audio_devices`, `set_audio_device` | List or choose output and input devices (`null` = system default; takes effect immediately, applies at the next launch) |
 | `export_project` | Export as WAV, FLAC, Opus (bitrate), stems or MIDI – the whole piece or the selected range |
-| `chat_poll`, `chat_reply` | Fetch tasks from the chat (long poll) and reply to them |
+| `chat_poll`, `chat_reply` | Fetch tasks from the chat (long poll; reserved for `client`, offered again without a reply within `leaseSeconds`) and reply to them (`done=false` confirms, `done=true` finishes) |
+| `chat_peek` | New chat messages after `sinceId` without picking anything up (also `chat_poll {peek: true}`) |
 | `list_instruments`, `create_instrument_track`, `set_instrument` | Create and switch instruments (Pluck, Organ, Harpsichord, Bass, Synth, Drums) |
 | `describe_sound`, `set_sound`, `preview_sound` | Measure a sound, set it (including the synth's envelope and curves), preview it |
 | `set_sound_field` | Point or starting point in a field (Character, Timbre, Space) |
@@ -849,6 +869,10 @@ and play", "Analyze my last recording and make an instrument track from it".
 | `transform_melody`, `countersubject` | Inversion, retrograde, augmentation … or an invertible countersubject as a track |
 | `write_fugue` | Fugue framework for 2–4 voices as tracks (organ or harpsichord) |
 | `check_counterpoint` | Part-writing errors with bar and tracks – for targeted fixes |
+
+Every writing tool also returns what changed: the new `revision`, a short `change` and the
+IDs it `created` (or `removed`) – no `get_project` needed afterwards. As long as the person
+has asked to stop a task, every response (and every error) carries `cancelRequested`.
 
 Environment variables:
 * `KLANGWELT_MCP_PORT` – default 7419.
