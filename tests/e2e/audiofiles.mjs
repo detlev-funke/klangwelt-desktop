@@ -107,3 +107,19 @@ export function drums(pattern, steps, bpm, sr) {
   }
   return Array.from(out);
 }
+
+/** Plucked notes, one every `beatSecs` (sharp attack, decaying, with overtones) – a clear pulse for the tempo. */
+export function plucked(midis, beatSecs, sr) {
+  const out = [];
+  for (const m of midis) {
+    const f = 440 * 2 ** ((m - 69) / 12);
+    const n = Math.round(beatSecs * sr);
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      const env = Math.min(1, t / 0.005) * Math.exp(-t * 2) * Math.max(0, Math.min(1, (beatSecs - 0.04 - t) / 0.02));
+      const w = 2 * Math.PI * f * t;
+      out.push(env * (0.4 * Math.sin(w) + 0.15 * Math.sin(2 * w) + 0.06 * Math.sin(3 * w)));
+    }
+  }
+  return out;
+}

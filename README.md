@@ -63,6 +63,8 @@ KLANGWELT_EXE=target/release/klangwelt.exe KLANGWELT_STUMM=1 npm run test:e2e
 * **Silent:** Test instances cannot be heard (`KLANGWELT_STUMM=1`: playback,
   position and levels run, but only zeros go to the device). To listen in:
   `KLANGWELT_TESTS_LAUT=1`.
+* **No microphone:** Tests that record take a WAV instead of a real device
+  (`KLANGWELT_FAKE_MIC=<file>`: played into the recording in real time, in a loop).
 * **Which program:** `KLANGWELT_EXE` selects a different one than
   `target/debug/klangwelt.exe` (after `npm run release`:
   `KLANGWELT_EXE=target/release/klangwelt.exe`).
@@ -86,8 +88,8 @@ KLANGWELT_EXE=target/release/klangwelt.exe KLANGWELT_STUMM=1 npm run test:e2e
   * Project: tracks, demo, save/open.
   * Agent (MCP) and chat.
   * Windows, settings, expression, audio analysis, sound.
-* **Not testable automatically:** the microphone (recording, singing a melody) and
-  downloading the PDMX library.
+  * Recording with the live analysis (note, level, key, tempo) and the finished analysis.
+* **Not testable automatically:** a real microphone and downloading the PDMX library.
 
 The library's test pieces are written as MusicXML at runtime by
 `tests/e2e/fixtures.mjs`.
