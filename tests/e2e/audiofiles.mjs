@@ -108,17 +108,21 @@ export function drums(pattern, steps, bpm, sr) {
   return Array.from(out);
 }
 
-/** Plucked notes, one every `beatSecs` (sharp attack, decaying, with overtones) – a clear pulse for the tempo. */
-export function plucked(midis, beatSecs, sr) {
+/** Plucked notes, one every `beatSecs` (sharp attack, decaying, with overtones) – a clear pulse for the tempo.
+ *  A note is a MIDI number or `{ midi, amp, accent, secs }`: amplitude factor, attack gain falling back
+ *  within about 30 ms (4 = a sforzato 12 dB above), sounding seconds (shorter = staccato). */
+export function plucked(notes, beatSecs, sr) {
   const out = [];
-  for (const m of midis) {
-    const f = 440 * 2 ** ((m - 69) / 12);
+  for (const note of notes) {
+    const { midi, amp = 1, accent = 1, secs = beatSecs - 0.04 } = typeof note === "number" ? { midi: note } : note;
+    const f = 440 * 2 ** ((midi - 69) / 12);
     const n = Math.round(beatSecs * sr);
     for (let i = 0; i < n; i++) {
       const t = i / sr;
-      const env = Math.min(1, t / 0.005) * Math.exp(-t * 2) * Math.max(0, Math.min(1, (beatSecs - 0.04 - t) / 0.02));
+      const gain = amp * (1 + (accent - 1) * Math.exp(-t / 0.03));
+      const env = Math.min(1, t / 0.005) * Math.exp(-t * 2) * Math.max(0, Math.min(1, (secs - t) / 0.02));
       const w = 2 * Math.PI * f * t;
-      out.push(env * (0.4 * Math.sin(w) + 0.15 * Math.sin(2 * w) + 0.06 * Math.sin(3 * w)));
+      out.push(gain * env * (0.15 * Math.sin(w) + 0.056 * Math.sin(2 * w) + 0.022 * Math.sin(3 * w)));
     }
   }
   return out;

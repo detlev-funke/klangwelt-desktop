@@ -1,6 +1,7 @@
 // Live analysis while recording on the desktop. The app records from a WAV
 // instead of a microphone (KLANGWELT_FAKE_MIC – tests never listen to a real
-// device): a C major melody, one plucked note every half second (120 BPM).
+// device): a C major melody, one plucked note every half second (120 BPM), with a
+// sforzato (A4), two soft notes (D4, B3) and a staccato note (C5).
 // While recording, the analysis window shows what sounds right now, the
 // level, key and tempo; the core hands out only what is new; after stopping
 // the finished analysis replaces the live view.
@@ -12,7 +13,7 @@ import { join } from "node:path";
 import { startApp, makeTest, sleep } from "./harness.mjs";
 import { plucked, writeWav } from "./audiofiles.mjs";
 
-const MELODY = [60, 64, 67, 72, 67, 64, 65, 69, 67, 62, 59, 60];
+const MELODY = [60, 64, 67, { midi: 72, secs: 0.14 }, 67, 64, 65, { midi: 69, accent: 4 }, 67, { midi: 62, amp: 0.25 }, { midi: 59, amp: 0.25 }, 60];
 
 let app;
 const test = makeTest(() => app);
@@ -90,5 +91,51 @@ test("a second recording starts the live view afresh", async () => {
   assert.ok(first.seconds < 5, `starts at zero: ${first.seconds} s`);
   await app.clickOn("kw-transport .btn.rec");
   await app.waitFor(() => !T.st.status.peek().recording && !document.querySelector(".analysis.live"), { timeout: 15000, what: "stopped" });
+  assert.deepEqual(app.errors, []);
+});
+
+test("the analysis finds dynamics, a sforzato and staccato and carries them into the melody track", async () => {
+  await app.reset();
+  await app.clickOn("kw-transport .btn.rec");
+  await app.waitFor(() => !!document.querySelector(".analysis.live"), { what: "live view" });
+  // live: the latest note's dynamics, the sforzato among the accents
+  const dyn = await app.waitFor(
+    () => {
+      const p = [...T.$$(".analysis.live .prop")].find((p) => p.querySelector("label").textContent === "Dynamik");
+      const v = p?.querySelector(".value").textContent ?? "";
+      const hint = p?.querySelector(".hint").textContent ?? "";
+      return /^(pp|p|mp|mf|f|ff)$/.test(v) && hint.includes("sfz") ? { v, hint } : null;
+    },
+    { timeout: 15000, what: "dynamics and the sforzato live" },
+  );
+  assert.match(dyn.hint, /sfz \d/);
+  // a whole round of the melody (6 s) and a bit
+  await app.waitFor(() => window.__TAURI__.core.invoke("record_live", { since: { take: 0, curve: 0, notes: 0, onsets: 0 } }).then((v) => v && v.seconds >= 8), { timeout: 15000, what: "8 seconds recorded" });
+  await app.clickOn("kw-transport .btn.rec");
+  await app.waitFor(() => !T.st.status.peek().recording && !document.querySelector(".analysis.live") && !!document.querySelector(".analysis"), { timeout: 15000, what: "finished analysis" });
+
+  const done = await facts(".analysis");
+  assert.match(done.Akzente, /sfz \d/, done.Akzente);
+  assert.match(done.Artikulation, /staccato \d/, done.Artikulation);
+  assert.match(done.Dynamik, /^(pp|p|mp) – (f|ff)$/, done.Dynamik);
+  const found = await app.eval(() => T.st.analysis.peek().notes.map((n) => ({ midi: n.midi, attack: n.attack, articulation: n.articulation, velocity: n.velocity })));
+  const sfz = found.filter((n) => n.attack === "sforzato");
+  assert.ok(sfz.length >= 1 && sfz.every((n) => n.midi === 69), `sforzato on A4 only: ${JSON.stringify(sfz)}`);
+  assert.ok(found.some((n) => n.midi === 72 && n.articulation === "staccato"), "C5 is staccato");
+
+  // into the notes: velocity, brighter attack, short staccato
+  await app.clickOn(".analysis .btn", { text: "Melodie" });
+  const notes = await app.waitFor(() => T.st.snapshot.peek().project.tracks.find((t) => t.kind === "instrument")?.clips.flatMap((c) => c.source.notes), { what: "melody track" });
+  const of = (p) => notes.filter((n) => n.pitch === p);
+  const median = (v) => [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)];
+  const usual = median([...of(64), ...of(67)].map((n) => n.velocity));
+  const loudest = notes.reduce((a, b) => (b.velocity > a.velocity ? b : a));
+  assert.equal(loudest.pitch, 69, `the sforzato is the loudest note: ${JSON.stringify(loudest)}`);
+  assert.equal(loudest.brightness, 0.4, "with a brighter attack");
+  assert.ok(loudest.velocity >= usual + 25, `sforzato ${loudest.velocity}, usual ${usual}`);
+  for (const p of [62, 59]) assert.ok(of(p).length && of(p).every((n) => n.velocity < usual - 20), `soft ${p}: ${JSON.stringify(of(p))} (usual ${usual})`);
+  // staccato: at most half the way to the next note (a beat), far shorter than the others
+  assert.ok(of(72).some((n) => n.lengthBeats <= 0.5), `staccato C5: ${JSON.stringify(of(72))}`);
+  assert.ok(median(of(67).map((n) => n.lengthBeats)) >= 0.75, `normal notes keep their length: ${JSON.stringify(of(67))}`);
   assert.deepEqual(app.errors, []);
 });
