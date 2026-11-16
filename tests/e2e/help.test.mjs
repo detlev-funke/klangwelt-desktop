@@ -41,7 +41,9 @@ const helpVisible = () => app.eval(() => {
 test("help is closed at first; F1 opens it and pins the text for the element under the mouse", async () => {
   await app.reset();
   assert.equal(await helpVisible(), false, "startet geschlossen");
-  await hover(".export-btn");
+  // the Export entry of the File menu
+  await app.clickOn("kw-transport .file-btn");
+  await hover(".file-menu.open .mi-export");
   await app.key("F1");
   await app.waitFor(() => T.$("kw-help .help-title")?.textContent === "Exportieren", { what: "Hilfe zu Exportieren" });
   assert.equal(await app.eval(() => T.$("kw-help").classList.contains("frozen")), true, "festgehalten");
@@ -57,6 +59,7 @@ test("help is closed at first; F1 opens it and pins the text for the element und
   // F1 once more on the same one: releases – then the help follows the mouse again
   await app.key("F1");
   assert.equal(await app.eval(() => T.$("kw-help").classList.contains("frozen")), false);
+  await app.eval(() => document.querySelectorAll(".menu.open").forEach((m) => m.classList.remove("open")));
   await hover("[data-help=metronom]");
   assert.equal(await helpTitle(), "Metronom");
 });
@@ -93,11 +96,11 @@ test("follows the mouse: tooltips, window entries, ruler and tracks separate; no
   // Click on the lock pins, another click releases
   await app.clickOn("kw-help .help-lock");
   assert.equal(await app.eval(() => T.$("kw-help").classList.contains("frozen")), true);
-  await hover(".export-btn");
+  await hover(".save-btn");
   assert.equal(await helpTitle(), "Fenster „Song“");
   await app.clickOn("kw-help .help-lock");
-  await hover(".export-btn");
-  assert.equal(await helpTitle(), "Exportieren");
+  await hover(".save-btn");
+  assert.equal(await helpTitle(), "Speichern");
 });
 
 test("closed help window: F1 brings it back", async () => {

@@ -28,7 +28,9 @@ async function content() {
 }
 
 async function openDialog() {
-  await app.clickOn(".export-btn");
+  // Export lives in the File menu
+  await app.clickOn("kw-transport .file-btn");
+  await app.clickOn(".file-menu.open .mi-export");
   await app.waitFor(() => T.$(".export-modal"), { what: "Export-Dialog" });
 }
 
