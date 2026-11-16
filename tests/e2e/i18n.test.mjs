@@ -54,6 +54,38 @@ const coreError = () =>
     return { text, expected: i18n.t("Track {id} not found", { id: 424242 }) };
   });
 
+/** Open the settings menu; its language entries with their flags. */
+async function openLanguageMenu() {
+  await app.clickOn('[data-help="einstellungen"]');
+  await app.waitFor(() => document.querySelectorAll(".set-menu.open [data-lang]").length === 7, { what: "language menu" });
+  return app.eval(() =>
+    [...document.querySelectorAll(".set-menu.open [data-lang]")].map((b) => {
+      const svg = b.querySelector("svg.flag");
+      const r = svg?.getBoundingClientRect();
+      return {
+        lang: b.dataset.lang,
+        on: b.classList.contains("on"),
+        current: b.getAttribute("aria-current"),
+        flag: svg?.dataset.flag ?? null,
+        shapes: svg?.querySelectorAll("rect, path").length ?? 0,
+        size: r ? [Math.round(r.width), Math.round(r.height)] : null,
+      };
+    }),
+  );
+}
+
+/** Each entry has its own drawn flag at 18×12; only `current` is marked. */
+function assertFlags(items, current) {
+  assert.deepEqual(items.map((i) => i.lang), ["en", "de", "fr", "it", "es", "nl", "pl"]);
+  for (const it of items) {
+    assert.equal(it.flag, it.lang, `flag of ${it.lang}`);
+    assert.ok(it.shapes >= 2, `flag of ${it.lang} is drawn (${it.shapes} shapes)`);
+    assert.deepEqual(it.size, [18, 12], `size of the flag of ${it.lang}`);
+    assert.equal(it.on, it.lang === current, `${it.lang} marked`);
+    assert.equal(it.current, it.lang === current ? "true" : null, `aria-current of ${it.lang}`);
+  }
+}
+
 test("French WebView: UI and core in French", async () => {
   app = await startApp({ languages: "fr-FR,fr" });
   const u = await ui();
@@ -71,8 +103,8 @@ test("French WebView: UI and core in French", async () => {
 test("switch to English in the settings menu; the choice survives a restart", async () => {
   app = await startApp();
   assert.equal((await ui()).settings, "Einstellungen");
-  await app.clickOn('[data-help="einstellungen"]');
-  await app.waitFor(() => document.querySelectorAll(".set-menu.open [data-lang]").length === 7, { what: "language menu" });
+  // every language with its flag (inline SVG: emoji flags would be letters in WebView2), German marked
+  assertFlags(await openLanguageMenu(), "de");
   await app.clickOn('.set-menu.open [data-lang="en"]');
   // the UI reloads; the core keeps running and gets the new dictionary
   await app.waitFor(() => !window.T, { timeout: 15000, what: "reload" });
@@ -89,4 +121,6 @@ test("switch to English in the settings menu; the choice survives a restart", as
   assert.equal(u.lang, "en");
   assert.equal(u.settings, "Settings");
   assert.equal((await coreError()).text, "Track 424242 not found");
+  assertFlags(await openLanguageMenu(), "en");
+  await app.click(5, 500);
 });
