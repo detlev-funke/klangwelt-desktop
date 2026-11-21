@@ -135,3 +135,51 @@ test("checkpoint and variant from a row; both are saved in the file and come bac
   await app.waitFor(() => T.st.snapshot.peek().project.tempoBpm === 120, { what: "Rückgängig nach dem Neustart" });
   assert.deepEqual(app.errors, []);
 });
+
+test("combine variants: changed bars per track, a conflict to decide, listen, a new variant", async () => {
+  await fresh();
+  // lead with one note per bar and a checkpoint; the main version changes bars 5–6,
+  // the variant "Refrain" bars 6–8 and adds a pad
+  await app.eval(async () => {
+    const call = (c, a) => window.__TAURI__.core.invoke(c, a);
+    const notes = (pitches) => pitches.map((p, i) => ({ pitch: p, startBeats: i * 4, lengthBeats: 1, velocity: 90 }));
+    await T.st.run({ type: "addTrack", track: { id: 0, name: "Lead", kind: "instrument" } });
+    const t = T.st.snapshot.peek().project.tracks[0];
+    await T.st.run({ type: "addClip", trackId: t.id, clip: { id: 0, name: "Thema", startBeats: 0, source: { type: "notes", lengthBeats: 32, notes: notes([60, 60, 60, 60, 60, 60, 60, 60]) } } });
+    const base = (await call("history_checkpoint", { name: "Rohfassung" })).current;
+    const clip = () => T.st.snapshot.peek().project.tracks[0].clips[0].id;
+    await T.st.run({ type: "setClipNotes", trackId: t.id, clipId: clip(), notes: notes([60, 60, 60, 60, 62, 62, 60, 60]) });
+    await T.st.act(call("history_variant_new", { name: "Refrain", node: base }));
+    await T.st.run({ type: "setClipNotes", trackId: t.id, clipId: clip(), notes: notes([60, 60, 60, 60, 60, 67, 67, 67]) });
+    await T.st.run({ type: "addTrack", track: { id: 0, name: "Pad", kind: "instrument", clips: [{ id: 0, name: "P", startBeats: 16, source: { type: "notes", lengthBeats: 16, notes: [{ pitch: 48, startBeats: 0, lengthBeats: 8, velocity: 80 }] } }] } });
+  });
+  await app.waitFor(() => T.$$(".hist-var").length === 2 && !T.$(".hist-combine").disabled, { what: "zwei Varianten" });
+  await app.clickOn(".hist-combine");
+  await app.waitFor(() => T.$$(".mg-row[data-track]").length === 2, { what: "Kombinieren" });
+  const cellTexts = () => app.eval(() => T.$$(".mg-row[data-track] .mg-cell .mg-cell-text").map((c) => c.textContent));
+  assert.deepEqual(await cellTexts(), ["Hauptversion", "Entscheiden", "Refrain", "Refrain"]);
+  assert.equal(await app.eval(() => T.$(".mg-apply").disabled), true, "the conflict is open");
+  // decide it in the menu of the field
+  await app.clickOn('.mg-row[data-track="1"] .mg-cell[data-start="20"]');
+  await app.waitFor(() => !!T.$(".mg-pop"), { what: "Auswahl" });
+  await app.clickOn(".mg-pop .mg-opt", { text: "Hauptversion" });
+  assert.deepEqual(await cellTexts(), ["Hauptversion", "Hauptversion", "Refrain", "Refrain"]);
+  assert.equal(await app.eval(() => T.$(".mg-apply").disabled), false);
+  // listen (muted test instance): plays and stops again
+  await app.clickOn(".mg-play");
+  await app.waitFor(() => T.st.status.peek().playing, { what: "Probehören" });
+  await app.clickOn(".mg-play");
+  await app.waitFor(() => !T.st.status.peek().playing, { what: "Stopp" });
+  await app.shot("historie-kombinieren-desktop");
+  await app.clickOn(".mg-apply");
+  await app.waitFor(() => T.$$(".hist-var").length === 3 && !!T.$(".hist-table"), { what: "neue Variante" });
+  assert.deepEqual(await variants(), [{ name: "Hauptversion", on: false }, { name: "Refrain", on: false }, { name: "Refrain + Hauptversion", on: true }]);
+  assert.equal((await labels()).at(-1), "Kombiniert: Hauptversion");
+  const p = await app.eval(() => T.st.snapshot.peek().project);
+  assert.deepEqual(p.tracks.map((t) => t.name), ["Lead", "Pad"]);
+  assert.deepEqual(p.tracks[0].clips[0].source.notes.map((n) => n.pitch), [60, 60, 60, 60, 62, 62, 67, 67]);
+  // one undo step back to the refrain's state
+  await app.key("z", { mods: MOD.ctrl });
+  await app.waitFor(() => T.st.snapshot.peek().project.tracks[0].clips[0].source.notes[4].pitch === 60, { what: "Rückgängig" });
+  assert.deepEqual(app.errors, []);
+});
