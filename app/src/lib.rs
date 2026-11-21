@@ -4,12 +4,14 @@
 //! * Every UI call the core knows goes to its command table
 //!   (`klang_app::commands`) – the same one the web core uses in the browser.
 //!   Only commands that exist on the desktop alone live here (close window,
-//!   "Show in folder", download and manage libraries).
+//!   "Show in folder", the file picker for projects, download and manage
+//!   libraries).
 //! * The desktop's [`klang_app::Host`]: Tauri events and the operating
 //!   system's folders.
 //! * Plus the MCP server for the agent (`mcp.rs`) and the command line.
 
 pub mod cli;
+mod dialog;
 mod libraries;
 mod library;
 mod mcp;
@@ -97,6 +99,23 @@ async fn export_reveal(path: String) -> Result<(), String> {
         std::process::Command::new("xdg-open").arg(dir).spawn().map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// The system's file picker for a .klangwelt file ("Choose file…" in the Open
+/// dialog); starts in the project folder. The path to open it with, `None` when
+/// cancelled. The browser's shell answers the same command with its file picker.
+#[tauri::command]
+async fn project_pick(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let start_dir = klang_app::Host::projects_dir(&DesktopHost(app.clone()));
+    // the dialog is modal to the window (Windows: handle as a number, to cross threads)
+    #[cfg(windows)]
+    let owner = app.get_webview_window("main").and_then(|w| w.hwnd().ok()).map(|h| h.0 as isize);
+    #[cfg(not(windows))]
+    let owner = None;
+    let (title, filter) = (klang_i18n::tr!("Open project"), klang_i18n::tr!("Klangwelt project"));
+    tauri::async_runtime::spawn_blocking(move || dialog::pick_project(owner, &start_dir, &title, &filter))
+        .await
+        .map_err(|e| klang_i18n::tr!("Cancelled: {error}", error = e))?
 }
 
 /// Closes the app, even with unsaved changes (after confirmation in the UI).
@@ -190,6 +209,7 @@ fn desktop_commands() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         app_close,
         export_reveal,
+        project_pick,
         library::library_add,
         libraries::library_list,
         libraries::library_create,

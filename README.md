@@ -130,8 +130,9 @@ klangwelt repo (`klangwelt/ui`: `npm run test:unit`, `npm run test:web`).
 ### Saving and opening projects
 
 On the left of the toolbar: **File ▾** (New project, Open, Save,
-Save as, Load demo project) and the **Save** button. A dot
+Save as, Export) and the **Save** button. A dot
 on the button and "•" after the project name indicate unsaved changes.
+The demo is offered by the empty project ("Load demo").
 
 - A project file `*.klangwelt` is a ZIP: `projekt.json` (tracks, clips,
   notes with expression, sounds, tempo) and, under `audio/`, every recording used,
@@ -139,10 +140,11 @@ on the button and "•" after the project name indicate unsaved changes.
   passed on.
 - Default folder: `Documents/Klangwelt/Projekte`. In the dialog a name is enough;
   a full path saves elsewhere. "Open" lists the folder
-  (newest first) and also accepts a path.
+  (newest first), also accepts a path, and "Choose file…" opens the system's
+  file dialog for a `.klangwelt` file anywhere else.
 - Saving is atomic (first `*.klangwelt.teil`, then rename), so that a
   crash never leaves a half-written file.
-- New project, Open, Demo and closing the window ask when there are
+- New project, Open and closing the window ask when there are
   unsaved changes: Save / Don't save / Cancel.
 
 ### Inserting audio files and converting them to notes
