@@ -889,7 +889,10 @@ and play", "Analyze my last recording and make an instrument track from it".
 | `list_libraries`, `switch_library`, `create_library`, `delete_library` | List, switch, create, delete libraries (one index each) |
 | `download_library`, `add_to_library`, `library_status` | Import a package or files into the active library (in the background; if something is already running, the package is queued), query the status |
 | `browse_library` | Explore the library as a tree (genre, composer, mood, instrumentation …) |
-| `analyze_score` | MusicXML file: key, mood, voice functions, cadences |
+| `search_library` | Find scores in the active library by title, composer or instruments – your own included; one hit per score with its `doc` |
+| `read_library_score` | A library score by `doc` (no file path, also in the browser): voices with number, name, part, role and range, bars, key, tempo; with `fromBar`/`toBar` the notes of those bars, compact |
+| `import_library_score` | Chosen parts (and bars) of a library score as instrument tracks – one per part with all its voices, or per voice with `split: "voice"` – in one undo step; `trackIds` + `startBeats` put a further movement after the first on the same tracks |
+| `analyze_score` | A library score (`doc`) or a MusicXML file (`path`): key, mood, voice functions, cadences |
 | `analyze_harmony` | Key and chord progression (degrees, functions, mood, breaks) of a track, a clip or the whole piece |
 | `suggest_chords` | Continuations after a chord progression with mood, frequency and examples from the library; multi-step paths to a cadence; cadence templates |
 | `preview_chords`, `write_chords` | Play a chord progression in four parts or write it as notes (symbols like `G7`, `fis°` or degrees like `V7/V`; with `mode: einfuegen` whatever follows moves back) |
