@@ -872,10 +872,11 @@ and play", "Analyze my last recording and make an instrument track from it".
 | `list_song_templates`, `write_song` | List song templates, generate a whole song (also with custom sections, tempo, key, chords) |
 | `list_drum_patterns`, `write_drum_pattern`, `read_drum_pattern` | List genre patterns, write one as a drum clip (also custom rows like `kick: "x...x..."`), read a clip as a grid |
 | `analyze_clip`, `melody_to_track` | Analyze a recording, import the melody |
-| `audio_to_notes` | Convert a recording into a melody track (`target: melodie`) or rhythm track (`rhythmus`: kick, snare, hi-hat) directly below; without `clipId`, all audio clips of the track |
+| `audio_to_notes` | Convert a recording into a melody track (`target: melodie`) or rhythm track (`rhythmus`: kick, snare, hi-hat) directly below; without `clipId`, all audio clips of the track; `smooth` (off, light, medium = default, strong) first merges the fragments pitch detection splits a melody into |
 | `import_audio` | Insert audio files (WAV, AIFF, FLAC, Opus) as tracks – with the `trackId` of an audio track into that track, from `startBeats`; unreadable files are returned with a reason |
 | `delete_range` | Delete a time range from all tracks; everything after it moves up (clips are split or shortened, audio is cut) |
 | `quantize_notes` | Quantize a clip's notes to the grid (`grid` in beats: 1 = quarter, 0.5 = eighth; `lengths`: the ends too; `notes`: indices) |
+| `smooth_notes` | Smooth a clip's notes from a recording: unusually short fragments go into a neighbour, repeated notes of one pitch without a new attack become one (`strength`: light, medium, strong; `notes`: indices) |
 | `search_melody` | Search the active library for a melody |
 | `list_libraries`, `switch_library`, `create_library`, `delete_library` | List, switch, create, delete libraries (one index each) |
 | `download_library`, `add_to_library`, `library_status` | Import a package or files into the active library (in the background; if something is already running, the package is queued), query the status |
