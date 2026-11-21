@@ -83,6 +83,8 @@ KLANGWELT_EXE=target/release/klangwelt.exe KLANGWELT_STUMM=1 npm run test:e2e
   * Sound: three fields (a starting point changes only its own field, a drag is one
     undo step, hiding), synth envelope (presets, pulse, drawing
     curves), agent.
+  * Drums with pitch: melody notes heard in the drum kit and by pitch, exported
+    pitch per note, keys switch (one undo step, view, rhythm window), agent.
   * Harmony: moods, legend, paths, cadence cards.
   * Fugue and checker.
   * Project: tracks, demo, save/open.
@@ -385,6 +387,14 @@ sounds of the remaining instruments; choosing one turns the track into that inst
   is best tuned to the key. Rim follows the snare shell; cymbals,
   cowbell and shaker follow the brightness and length of the hi-hat.
   Starting points: Techno, House, Lo-Fi, Rock, Disco, 808, Trap, Hardstyle.
+  Every other key plays a **tuned drum** that settles on the note's pitch –
+  kick drum below C3, tom from C3 to B4, snare from C5 – with the kit's punch,
+  length and snare wires, so nothing on a drums track stays silent. The switch
+  **Keys: Drum kit | Pitch** turns every key into a tuned drum, for melodies and
+  bass lines on drums; by pitch the track transposes, the pitch sliders, clap and
+  hi-hat rest. In the drum kit the track names the drum rows and hatches the
+  other keys; by pitch it is a plain piano roll with the range boundaries
+  marked (the view refits when you switch).
 * **Bass** – subtractive (saw/square, low-pass with envelope, sub-octave,
   bite/saturation, glide on tied notes). Starting points: Finger, Pluck Bass,
   Acid, Growl, Sub Bass.
@@ -408,7 +418,8 @@ bar, the bright columns are the beats 1 2 3 4. In the drums' Sound window,
 "Genre patterns …" leads here. In an empty project,
 **"Start with a beat ▾"** offers the same templates: one click creates a
 drum track with four bars, applies the genre's tempo and sound (one
-undo step) and opens the clip here.
+undo step) and opens the clip here. Only drum tracks in the drum kit can be
+written to – by pitch their keys would be tuned drums.
 
 * **Genres:** Basics, House, Techno, Electro, Hip-Hop / Boom Bap, Trap,
   Drum & Bass / Jungle, Funk / Breakbeat, Rock / Pop, Reggaeton / Dancehall,
