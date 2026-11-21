@@ -1,7 +1,8 @@
 // Note entry on the desktop: double-click in the piano roll adds a note, keyboard
 // entry mode (switch next to the piano) adds notes with the letter keys – Shift keeps
 // the position (chords), Ctrl keeps its shortcuts – and with clicks on the piano; the
-// shortcut line stays right below the last track.
+// shortcut line stays right below the last track. Playback that ends at the end of the
+// piece leaves the mark there, so typing appends.
 import { before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { startApp, makeTest, noteGeo, geoFns, MOD, sleep } from "./harness.mjs";
@@ -147,6 +148,36 @@ test("keyboard entry: a click on the piano adds that note, Backspace steps back,
   await app.key("Escape");
   assert.equal(await entryNow(), null, "Esc ends keyboard entry");
   assert.equal(await app.eval(() => !!document.querySelector(".entry-switch.on")), false);
+});
+
+test("playback stops right at the end of the piece: the mark follows and typing appends there; Play from the end starts at the beginning", async () => {
+  // the piece: 72 over beat 7–7.5 (clip 4–8) – it ends at 7.5
+  await switchOn();
+  assert.equal((await entryNow()).beat, 0, "starts at the playhead");
+  const bpm = await app.eval(() => T.st.snapshot.peek().project.tempoBpm);
+  const beatNow = () => app.eval((bpm) => (T.st.status.peek().positionSecs * bpm) / 60, bpm);
+  await app.eval((bpm) => window.__TAURI__.core.invoke("seek", { seconds: (6 * 60) / bpm }), bpm);
+  await app.key(" ");
+  await app.waitFor(() => T.st.status.peek().playing, { what: "playing", timeout: 2000 });
+  await app.waitFor(() => !T.st.status.peek().playing, { what: "stopped at the end", timeout: 4000 });
+  assert.ok(Math.abs((await beatNow()) - 7.5) < 0.001, `the playhead stays at the end: ${await beatNow()}`);
+  assert.deepEqual(await entryNow(), { trackId, beat: 7.5 }, "the mark follows to the end");
+  await app.key("d");
+  await app.key("f");
+  await idle();
+  assert.deepEqual(await notes(), ["64@7.5", "65@7.75", "72@7"], "the typed notes append to the piece");
+  assert.equal(await app.eval(() => T.st.snapshot.peek().engine.endBeats), 8, "the piece got longer");
+  // Play from the old end: plays what was typed and stops at the new end
+  await app.key(" ");
+  await app.waitFor((bpm) => !T.st.status.peek().playing && Math.abs((T.st.status.peek().positionSecs * bpm) / 60 - 8) < 0.001, { what: "stopped at the new end", timeout: 4000 }, bpm);
+  assert.deepEqual(await entryNow(), { trackId, beat: 8 });
+  // Play at the end starts at the beginning; pausing in the middle leaves the mark where it is
+  await app.key(" ");
+  await app.waitFor((bpm) => T.st.status.peek().playing && (T.st.status.peek().positionSecs * bpm) / 60 > 0.5, { what: "playing from the front", timeout: 3000 }, bpm);
+  assert.ok((await beatNow()) < 4, "from the front");
+  await app.key(" ");
+  await app.waitFor(() => !T.st.status.peek().playing, { what: "paused" });
+  assert.deepEqual(await entryNow(), { trackId, beat: 8 }, "a pause doesn't move the mark");
 });
 
 test("the shortcut line stays right below the last track; while typing it lists the mode's keys", async () => {

@@ -145,23 +145,36 @@ test("repeat with a selected range: only the range", async () => {
   assert.match(await app.eval(() => T.$("kw-transport .btn[title^='Wiederholen']").title), /markierter Bereich, Takt 2\.1 bis 3\.1/);
 });
 
-test("repeat off: stops one bar after the end of the piece, Play then starts at the beginning", async () => {
+test("repeat off: stops right at the end of the piece and the playhead stays there, Play then starts at the beginning", async () => {
   await app.reset();
-  await oneBar(0); // piece ends at beat 4 → stops at beat 8
+  await oneBar(0); // last note 3–3.9: the piece ends at beat 3.9 (the clip at 4)
+  assert.equal(await app.eval(() => T.st.snapshot.peek().engine.endBeats), 3.9, "end of the piece in the snapshot");
   const bpm = await app.eval(() => T.st.snapshot.peek().project.tempoBpm);
   await app.eval(async (bpm) => {
-    await window.__TAURI__.core.invoke("seek", { seconds: (6.5 * 60) / bpm });
+    await window.__TAURI__.core.invoke("seek", { seconds: (2.5 * 60) / bpm });
     await window.__TAURI__.core.invoke("transport", { action: "play" });
   }, bpm);
-  await app.waitFor(() => T.st.status.peek().playing, { what: "spielt", timeout: 2000 }).catch(() => {});
-  await app.waitFor(() => !T.st.status.peek().playing, { what: "angehalten", timeout: 4000 });
+  await app.waitFor(() => T.st.status.peek().playing, { what: "playing", timeout: 2000 });
+  await app.waitFor(() => !T.st.status.peek().playing, { what: "stopped", timeout: 4000 });
   const beat = await app.eval((bpm) => (T.st.status.peek().positionSecs * bpm) / 60, bpm);
-  assert.ok(Math.abs(beat - 8) < 0.1, `hält einen Takt nach dem Ende: Schlag ${beat.toFixed(2)}`);
-  // Play is past the end: starts at the front again
-  await app.eval(() => window.__TAURI__.core.invoke("transport", { action: "play" }));
+  assert.ok(Math.abs(beat - 3.9) < 0.001, `stops at the end of the last note: beat ${beat.toFixed(4)}`);
+  await sleep(400);
+  assert.equal(await beatNow(), beat, "the playhead stays at the end");
+  assert.equal(await app.eval(() => T.st.status.peek().playing), false);
+  assert.ok(await app.eval(async () => (await import("./dom.js")).icon("play").innerHTML === T.$("kw-transport .btn.big.primary svg").innerHTML), "the transport shows Play again");
+  // Play at the end: starts at the front again
+  await app.key(" ");
   const seen = await watchBeats(500);
   await app.eval(() => window.__TAURI__.core.invoke("transport", { action: "stop" }));
-  assert.ok(seen.some((b) => b < 2), `von vorn: ${seen.map((b) => b.toFixed(1))}`);
+  assert.ok(seen.some((b) => b > 0 && b < 1), `from the front: ${seen.map((b) => b.toFixed(1))}`);
+  // the same from past the end
+  await app.eval(async (bpm) => {
+    await window.__TAURI__.core.invoke("seek", { seconds: (6 * 60) / bpm });
+    await window.__TAURI__.core.invoke("transport", { action: "play" });
+  }, bpm);
+  const past = await watchBeats(500);
+  await app.eval(() => window.__TAURI__.core.invoke("transport", { action: "stop" }));
+  assert.ok(past.some((b) => b > 0 && b < 1), `from the front: ${past.map((b) => b.toFixed(1))}`);
 });
 
 test("selected range without repeat: Play plays exactly the range once, then back to the start", async () => {
