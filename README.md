@@ -7,7 +7,7 @@ large MusicXML library, and a sound workshop with descriptive sound parameters.
 This repo is the **desktop app**: the Tauri shell (`app/`) with audio devices,
 files, library downloads, an MCP server for agents and the command line, plus
 the end-to-end tests. The core (Rust), the interface (TypeScript) and the
-browser version live in the [klangwelt](https://github.com/DevFunke/klangwelt) repo,
+browser version live in the [klangwelt](https://github.com/detlev-funke/klangwelt) repo,
 included as a Git submodule in the `klangwelt/` folder.
 
 **Tech:** Rust (core, DSP, audio engine, library) · Tauri 2 (window/WebView) ·
@@ -22,7 +22,7 @@ On Windows, also the Visual Studio Build Tools (C++) and WebView2. The
 C compiler also builds libopus for the Opus export (no CMake needed).
 
 ```bash
-git clone --recurse-submodules https://github.com/DevFunke/klangwelt-desktop.git
+git clone --recurse-submodules https://github.com/detlev-funke/klangwelt-desktop.git
 cd klangwelt-desktop
 npm run setup        # fetch the submodule, install TypeScript for the interface
 npm run build:ui     # interface → klangwelt/ui/dist
