@@ -122,6 +122,8 @@ async fn project_pick(app: tauri::AppHandle) -> Result<Option<String>, String> {
 #[tauri::command]
 async fn app_close(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.force_close.store(true, Ordering::SeqCst);
+    // closed on purpose (saved, or "Don't save"): no recovery copy for the next start
+    klang_app::autosave::clear_recovery(&state);
     app.exit(0);
     Ok(())
 }
@@ -276,6 +278,9 @@ pub fn run_with(open: Option<std::path::PathBuf>) {
                 if (st.is_dirty() || busy.is_some()) && !st.force_close.load(Ordering::SeqCst) {
                     api.prevent_close();
                     let _ = window.emit("close-requested", CloseInfo { dirty: st.is_dirty(), busy });
+                } else {
+                    // a normal close: nothing to recover at the next start
+                    klang_app::autosave::clear_recovery(&st);
                 }
             }
         })

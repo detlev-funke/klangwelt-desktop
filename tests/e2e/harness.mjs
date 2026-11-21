@@ -299,8 +299,10 @@ async function connectPage(port, timeout) {
  *  `prepare(bibliothek)`: puts something into its library folder before the start.
  *  `languages`: the WebView's preferred languages (navigator.languages) – German by
  *  default, because the tests check German texts (language: klangwelt/ui/src/i18n.ts).
- *  `env`: more environment variables, e.g. KLANGWELT_FAKE_MIC (a WAV instead of the microphone). */
-export async function startApp({ tmp = mkdtempSync(join(tmpdir(), "klangwelt-e2e-")), prepare, languages = "de-DE,de", env: extra = {} } = {}) {
+ *  `env`: more environment variables, e.g. KLANGWELT_FAKE_MIC (a WAV instead of the microphone).
+ *  `autosave`: seconds between autosaves (klangwelt/ui/src/autosave.ts) – off by default, so it
+ *  never saves (and clears "unsaved changes") in the middle of other tests; null keeps what's set. */
+export async function startApp({ tmp = mkdtempSync(join(tmpdir(), "klangwelt-e2e-")), prepare, languages = "de-DE,de", env: extra = {}, autosave = 0 } = {}) {
   const exe = process.env.KLANGWELT_EXE ?? join(ROOT, "target", "debug", "klangwelt.exe");
   if (!existsSync(exe)) throw new Error(`Programm fehlt: ${exe} – erst „cargo build -p klangwelt“ (vorher „npm run build“ in ui/)`);
   prepare?.(join(tmp, "bibliothek"));
@@ -330,6 +332,7 @@ export async function startApp({ tmp = mkdtempSync(join(tmpdir(), "klangwelt-e2e
   // fixed window size for identical runs
   await app.send("Emulation.setDeviceMetricsOverride", { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
   await injectHelpers(app);
+  if (autosave != null) await app.eval(async (s) => (await import("./autosave.js")).setAutosaveSeconds(s), autosave);
   return app;
 }
 
