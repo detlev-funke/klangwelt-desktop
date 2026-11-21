@@ -3,11 +3,11 @@
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startApp, makeTest, ROOT, sleep, BACKGROUND_ENV } from "./harness.mjs";
+import { killTree, makeTempDir, removeTempDir } from "../../klangwelt/tests/tempdirs.mjs";
 import { writePieces } from "./fixtures.mjs";
 
 const EXE = process.env.KLANGWELT_EXE ?? join(ROOT, "target", "debug", "klangwelt.exe");
@@ -16,11 +16,11 @@ let work;
 const test = makeTest(() => app);
 before(async () => {
   app = await startApp();
-  work = mkdtempSync(join(tmpdir(), "klangwelt-cli-"));
+  work = makeTempDir("klangwelt-cli-");
 });
 after(async () => {
   await app?.close();
-  rmSync(work, { recursive: true, force: true });
+  await removeTempDir(work);
 });
 
 /** Runs the program, collects output. */
@@ -130,7 +130,7 @@ test("--mcp connects MCP clients to the running app over stdio", async () => {
 
 test("--mcp starts Klangwelt itself if it is not running", async () => {
   const port = await freePort();
-  const iso = mkdtempSync(join(tmpdir(), "klangwelt-selbst-"));
+  const iso = makeTempDir("klangwelt-selbst-");
   let pid = null;
   try {
     const r = await exec(["--mcp"], {
@@ -153,24 +153,9 @@ test("--mcp starts Klangwelt itself if it is not running", async () => {
     const alive = await fetch(`http://127.0.0.1:${port}/mcp`, { method: "POST", headers: { "content-type": "application/json" }, body: rpc(9, "ping") }).then((x) => x.ok).catch(() => false);
     assert.ok(alive, "App läuft nach dem Ende der Brücke weiter");
   } finally {
-    if (pid) {
-      try {
-        process.kill(pid);
-      } catch {
-        /* already exited */
-      }
-    }
-    await sleep(1500);
-    // WebView2 sometimes releases files only a few seconds after exit
-    for (let i = 0; ; i++) {
-      try {
-        rmSync(iso, { recursive: true, force: true });
-        break;
-      } catch (e) {
-        if (i >= 60) throw e;
-        await sleep(500);
-      }
-    }
+    // the window together with its WebView2 processes, which hold files in iso
+    if (pid) await killTree(pid);
+    await removeTempDir(iso);
   }
 });
 

@@ -57,6 +57,10 @@ KLANGWELT_EXE=target/release/klangwelt.exe KLANGWELT_STUMM=1 npm run test:e2e
 * **Isolated:** Each test file starts its own app instance with its own
   temp folder for the library and the WebView profile, and with free ports.
   A running Klangwelt and your library stay untouched.
+* **Tidy:** `close()` ends the app together with its WebView2 processes and
+  removes its temp folder. Folders a killed run left behind (`%TEMP%\klangwelt-*`,
+  unchanged for three hours, used by no running process) go at the next start
+  (`klangwelt/tests/tempdirs.mjs`).
 * **In the background:** The test windows sit off-screen, without a
   taskbar entry and without focus (`KLANGWELT_HINTERGRUND=1`). You can keep
   working in the meantime. To watch: `KLANGWELT_TESTS_SICHTBAR=1`.

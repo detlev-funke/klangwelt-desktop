@@ -6,15 +6,17 @@
 // Each test file starts its own, isolated app instance:
 //  * own temp folder for library (KLANGWELT_BIBLIOTHEK) and WebView profile,
 //  * free ports for CDP and MCP – a running Klangwelt is left untouched.
+// `close()` ends the app with its WebView2 processes and removes the folder; folders of
+// killed runs are swept on the next start (klangwelt/tests/tempdirs.mjs).
 // Program: KLANGWELT_EXE or target/debug/klangwelt.exe.
 
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { makeTempDir, removeTempDir, stopProcess, waitUntilUnused } from "../../klangwelt/tests/tempdirs.mjs";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 /** Screenshots of failed tests. */
@@ -239,7 +241,9 @@ class App {
     await sleep(150);
   }
 
-  /** Quits the app but keeps its folder – restart with `startApp({ tmp: app.tmp })`. */
+  /** Quits the app but keeps its folder – restart with `startApp({ tmp: app.tmp })`.
+   *  Returns once its WebView2 processes are gone too, so the next instance gets the
+   *  profile to itself. */
   async stop() {
     try {
       this.ws.close();
@@ -256,19 +260,18 @@ class App {
         });
       });
     }
+    await waitUntilUnused(this.tmp);
   }
 
+  /** Quits the app with all its processes (WebView2) and removes its folder. */
   async close() {
-    await this.stop();
-    // WebView2 sometimes releases files only shortly after exit
-    for (let i = 0; i < 10; i++) {
-      try {
-        rmSync(this.tmp, { recursive: true, force: true });
-        break;
-      } catch {
-        await sleep(300);
-      }
+    try {
+      this.ws.close();
+    } catch {
+      /* never mind */
     }
+    await stopProcess(this.child);
+    await removeTempDir(this.tmp);
   }
 }
 
@@ -302,9 +305,11 @@ async function connectPage(port, timeout) {
  *  `env`: more environment variables, e.g. KLANGWELT_FAKE_MIC (a WAV instead of the microphone).
  *  `autosave`: seconds between autosaves (klangwelt/ui/src/autosave.ts) – off by default, so it
  *  never saves (and clears "unsaved changes") in the middle of other tests; null keeps what's set. */
-export async function startApp({ tmp = mkdtempSync(join(tmpdir(), "klangwelt-e2e-")), prepare, languages = "de-DE,de", env: extra = {}, autosave = 0 } = {}) {
+export async function startApp({ tmp, prepare, languages = "de-DE,de", env: extra = {}, autosave = 0 } = {}) {
   const exe = process.env.KLANGWELT_EXE ?? join(ROOT, "target", "debug", "klangwelt.exe");
   if (!existsSync(exe)) throw new Error(`Programm fehlt: ${exe} – erst „cargo build -p klangwelt“ (vorher „npm run build“ in ui/)`);
+  const ownTmp = !tmp;
+  tmp ??= makeTempDir("klangwelt-e2e-");
   prepare?.(join(tmp, "bibliothek"));
   const [cdpPort, mcpPort] = [await freePort(), await freePort()];
   const env = {
@@ -321,7 +326,8 @@ export async function startApp({ tmp = mkdtempSync(join(tmpdir(), "klangwelt-e2e
   try {
     ws = await connectPage(cdpPort, 40000);
   } catch (e) {
-    child.kill();
+    await stopProcess(child);
+    if (ownTmp) await removeTempDir(tmp);
     throw e;
   }
   const app = new App(child, ws, tmp, mcpPort, cdpPort);

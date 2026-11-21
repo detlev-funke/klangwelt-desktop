@@ -5,10 +5,9 @@
 // the voices live; the agent analyzes and converts with mode "poly".
 import { before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startApp, makeTest, noteGeo } from "./harness.mjs";
+import { makeTempDir, removeTempDir } from "../../klangwelt/tests/tempdirs.mjs";
 import { writeWav } from "./audiofiles.mjs";
 
 const SR = 44_100;
@@ -41,14 +40,17 @@ function chorale() {
 
 let app;
 let wav;
+let micDir;
 const test = makeTest(() => app);
 before(async () => {
-  wav = join(mkdtempSync(join(tmpdir(), "klangwelt-voices-")), "Satz.wav");
+  micDir = makeTempDir("klangwelt-voices-");
+  wav = join(micDir, "Satz.wav");
   writeWav(wav, [chorale()], SR);
   app = await startApp({ env: { KLANGWELT_FAKE_MIC: wav } });
 });
 after(async () => {
   await app?.close();
+  await removeTempDir(micDir);
 });
 beforeEach(async () => {
   await app.reset();

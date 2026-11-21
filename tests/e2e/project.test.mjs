@@ -3,15 +3,15 @@
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { startApp, makeTest } from "./harness.mjs";
+import { makeTempDir } from "../../klangwelt/tests/tempdirs.mjs";
 
 let app;
 const test = makeTest(() => app);
 // The native file dialog can't be driven through CDP: the app answers it with this
 // file instead (KLANGWELT_FAKE_FILE_PICK) – outside the project folder, in the test's temp folder
-const tmp = mkdtempSync(join(tmpdir(), "klangwelt-e2e-"));
+const tmp = makeTempDir("klangwelt-e2e-");
 const picked = join(tmp, "Gewählt.klangwelt");
 before(async () => {
   app = await startApp({ tmp, env: { KLANGWELT_FAKE_FILE_PICK: picked } });

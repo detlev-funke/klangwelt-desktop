@@ -7,23 +7,25 @@
 // the finished analysis replaces the live view.
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startApp, makeTest, sleep } from "./harness.mjs";
+import { makeTempDir, removeTempDir } from "../../klangwelt/tests/tempdirs.mjs";
 import { plucked, writeWav } from "./audiofiles.mjs";
 
 const MELODY = [60, 64, 67, { midi: 72, secs: 0.14 }, 67, 64, 65, { midi: 69, accent: 4 }, 67, { midi: 62, amp: 0.25 }, { midi: 59, amp: 0.25 }, 60];
 
 let app;
+let micDir;
 const test = makeTest(() => app);
 before(async () => {
-  const wav = join(mkdtempSync(join(tmpdir(), "klangwelt-mic-")), "melody.wav");
+  micDir = makeTempDir("klangwelt-mic-");
+  const wav = join(micDir, "melody.wav");
   writeWav(wav, [plucked(MELODY, 0.5, 48_000)], 48_000);
   app = await startApp({ env: { KLANGWELT_FAKE_MIC: wav } });
 });
 after(async () => {
   await app?.close();
+  await removeTempDir(micDir);
 });
 
 const invoke = (cmd, args) => app.eval((c, a) => window.__TAURI__.core.invoke(c, a), cmd, args);
