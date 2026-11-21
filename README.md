@@ -856,6 +856,10 @@ and play", "Analyze my last recording and make an instrument track from it".
 | `execute` | Project commands (JSON as in the interface) as one undo step; `ifRevision` refuses if someone changed the project in the meantime; placeholders (`"ref": "$bass"`, then `"trackId": "$bass"`) – the response lists the IDs; notes also compact (`"C4 1 · E4 .5 v100 · G4 .5"`) |
 | `batch` | Several tool calls in a row as one undo step; stops at the first error and reverts the calls before it; `"$0.trackId"` uses a result of an earlier call |
 | `undo` / `redo` | Undo / Redo |
+| `history` | The change history as a compact table: the steps of the active variant (step IDs, labels, where they changed something, key figures), branches, variants and checkpoints |
+| `checkpoint`, `goto` | Name the current state (before a bigger change); jump to any step or checkpoint – the later steps stay |
+| `variant_new`, `variant_switch`, `variant_list` | Try ideas in variants: start one (from the current state, a step or a checkpoint), switch, list |
+| `combine` | Combine variants into a new one, per track and bar section against their common origin; conflicts come back as `open` with their options (incl. the notes) and are decided with `choices` |
 | `transport`, `set_metronome` | Playback, position, metronome |
 | `audio_devices`, `set_audio_device` | List or choose output and input devices (`null` = system default; takes effect immediately, applies at the next launch) |
 | `export_project` | Export as WAV, FLAC, Opus (bitrate), stems or MIDI – the whole piece or the selected range |

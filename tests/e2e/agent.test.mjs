@@ -138,7 +138,8 @@ test("tool list: all core tools present", async () => {
   const r = await app.mcpRaw("tools/list");
   const names = r.tools.map((t) => t.name);
   for (const n of ["get_project", "execute", "undo", "redo", "transport", "set_metronome", "audio_devices", "set_audio_device", "export_project", "chat_poll", "chat_reply", "create_instrument_track",
-    "search_melody", "analyze_harmony", "suggest_chords", "write_chords", "preview_chords", "fugue_subject", "write_fugue", "check_counterpoint"]) {
+    "search_melody", "analyze_harmony", "suggest_chords", "write_chords", "preview_chords", "fugue_subject", "write_fugue", "check_counterpoint",
+    "history", "checkpoint", "goto", "variant_new", "variant_switch", "variant_list", "combine"]) {
     assert.ok(names.includes(n), `${n} fehlt`);
   }
 });
@@ -358,6 +359,57 @@ test("batch: several tools as one undo step, reverted at the first error", async
   assert.match(e, /Call 2 \(set_sound\)/);
   await app.waitFor(() => T.st.snapshot.peek().project.tracks.length === 0, { what: "zurückgerollt" });
   assert.equal(await app.eval(() => T.st.snapshot.peek().canRedo), true, "the undone batch stays redoable");
+});
+
+test("change history: checkpoint, variant, combine with a conflict to decide, goto – the History window follows", async () => {
+  await app.reset();
+  await app.eval(() => T.st.showPanel("historie"));
+  // one note per bar (8 bars); `changed` replaces some of them
+  const bars = (changed = {}) => [0, 1, 2, 3, 4, 5, 6, 7].map((i) => `${changed[i] ?? "C4"} 1 @${i * 4}`).join(" · ");
+  const r = await app.mcp("execute", { label: "Lead", commands: [{ type: "addTrack", track: { ref: "$lead", name: "Lead", kind: "instrument",
+    clips: [{ ref: "$a", startBeats: 0, source: { type: "notes", lengthBeats: 32, notes: bars() } }] } }] });
+  const [lead, clip] = [r.ids.$lead, r.ids.$a];
+  const setNotes = (changed) => app.mcp("execute", { commands: [{ type: "setClipNotes", trackId: lead, clipId: clip, notes: bars(changed) }] });
+  const pitches = (want) => app.waitFor((id, w) => T.st.snapshot.peek().project.tracks.find((t) => t.id === id)?.clips[0].source.notes.map((n) => n.pitch).join() === w,
+    { what: `Lead-Noten ${want}` }, lead, want);
+  const activeVariant = (name) => app.waitFor((n) => T.$(".hist-var.on")?.childNodes[1].textContent === n, { what: `Variante „${name}“ aktiv` }, name);
+
+  const cp = await app.mcp("checkpoint", { name: "Rohfassung" });
+  await app.waitFor(() => T.$(".hist-row.current .hist-flag")?.textContent.trim() === "Rohfassung", { what: "Checkpoint des Agenten in der Historie" });
+  await setNotes({ 4: "D4", 5: "D4" });
+  const v = await app.mcp("variant_new", { name: "Refrain", checkpoint: "Rohfassung" });
+  assert.equal(v.step, cp.step);
+  await activeVariant("Refrain");
+  await pitches("60,60,60,60,60,60,60,60");
+  await setNotes({ 5: "G4", 6: "G4", 7: "G4" });
+  const main = (await app.mcp("variant_list")).variants.find((x) => x.name === "Hauptversion");
+  assert.ok(main && !main.active, "Hauptversion");
+  const h = await app.mcp("history");
+  assert.deepEqual(h.steps.map((s) => s.step).slice(0, 2), [1, cp.step]);
+  assert.deepEqual(h.steps[1].checkpoints, ["Rohfassung"]);
+  assert.equal(h.steps.at(-1).current, true);
+  assert.equal(h.variant.name, "Refrain");
+
+  // the conflict in bar 6 comes back open with the notes of each version; nothing changes
+  const conflict = `track ${lead} bar 6`;
+  const c = await app.mcp("combine", { others: [main.id] });
+  assert.deepEqual([c.combined, c.open], [false, [conflict]]);
+  assert.deepEqual(c.decisions.find((d) => d.id === conflict).options.map((o) => o.notes), ["C4 1 @20", "G4 1 @20", "D4 1 @20"]);
+  assert.equal((await app.mcp("variant_list")).variants.length, 2);
+  // decided: a new variant, the window shows it active
+  const done = await app.mcp("combine", { others: ["Hauptversion"], choices: { [conflict]: "Hauptversion" }, name: "Beides" });
+  assert.deepEqual([done.combined, done.variant.name, done.label], [true, "Beides", "Kombiniert: Hauptversion"]);
+  await activeVariant("Beides");
+  await pitches("60,60,60,60,62,62,67,67");
+
+  // back to the checkpoint, forward to the combined step
+  await app.mcp("goto", { checkpoint: "Rohfassung" });
+  await pitches("60,60,60,60,60,60,60,60");
+  await app.waitFor(() => T.$(".hist-row.current .hist-flag")?.textContent.trim() === "Rohfassung", { what: "zurück am Checkpoint" });
+  await app.mcp("goto", { step: done.step });
+  await pitches("60,60,60,60,62,62,67,67");
+  assert.match(await mcpError("batch", { calls: [{ tool: "goto", args: { step: cp.step } }] }), /not allowed/);
+  assert.match(await mcpError("variant_switch", { variant: "Gibt es nicht" }), /Refrain/);
 });
 
 test("no errors in the window", () => {
