@@ -216,7 +216,7 @@ test("context menu on the audio clip: convert to rhythm track – bass drum, sna
   await app.click(g.cx + 1.3 * g.ppb - g.scrollX, g.rowY + 50, { button: "right" });
   await app.waitFor(() => T.$(".ctx-menu .menu-title")?.textContent === "Beat", { what: "Menü des Audio-Clips" });
   assert.deepEqual(await app.eval(() => T.$$(".ctx-menu .menu-item b").map((b) => b.textContent)),
-    ["In Melodie-Spur umwandeln", "In Rhythmus-Spur umwandeln", "Analyse zeigen", "Tempo erkennen", "Clip löschen"]);
+    ["In Melodie-Spur umwandeln", "In Rhythmus-Spur umwandeln", "In Stimmen-Spuren umwandeln", "Analyse zeigen", "Tempo erkennen", "Clip löschen"]);
   await app.clickOn(".ctx-menu [data-act=rhythmus]");
   await app.waitFor(() => T.st.snapshot.peek().project.tracks.length === 2, { what: "Rhythmus-Spur", timeout: 20000 });
   const t = (await project()).tracks[1];
