@@ -85,7 +85,7 @@ pub fn run(mode: Mode) -> i32 {
         }
         Mode::Version => {
             attach_console();
-            println!("Klangwelt {}", env!("CARGO_PKG_VERSION"));
+            println!("Klangwelt {}", env!("KLANGWELT_VERSION"));
             0
         }
         Mode::Error(e) => {

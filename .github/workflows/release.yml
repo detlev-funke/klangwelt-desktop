@@ -1,0 +1,42 @@
+# A pushed tag v<version> (made by `npm run release:tag`, see
+# klangwelt/changelog/README.md) builds klangwelt.exe on Windows and publishes it as a
+# GitHub release, with the desktop app's entries of that version as notes.
+name: Desktop release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: klangwelt/ui/package-lock.json
+
+      # Rust (stable, MSVC) and the C compiler for libopus come with the Windows runner
+      - name: Build klangwelt.exe
+        run: |
+          npm --prefix klangwelt/ui ci
+          npm run release
+
+      - name: Create the release with the exe
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          node klangwelt/ui/scripts/changelog.mjs notes "$version" --platform=desktop > notes.md
+          exe="Klangwelt-${version/+/-}.exe"
+          cp target/release/klangwelt.exe "$exe"
+          gh release create "$GITHUB_REF_NAME" "$exe" --verify-tag --title "Klangwelt $version" --notes-file notes.md

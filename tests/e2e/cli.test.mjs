@@ -3,7 +3,7 @@
 import { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -57,12 +57,29 @@ function freePort() {
   });
 }
 
+/** The app version: Klangwelt's, from the submodule (klangwelt/changelog/README.md). */
+const VERSION = JSON.parse(readFileSync(join(ROOT, "klangwelt", "ui", "package.json"), "utf8")).version;
+
 test("--help lists all invocations, --version the version", async () => {
   const h = await exec(["--help"]);
   assert.equal(h.code, 0);
   for (const s of ["klangwelt --mcp", "klangwelt index build", "klangwelt index query", "klangwelt <file.klangwelt>"]) assert.ok(h.out.includes(s), s);
   const v = await exec(["--version"]);
-  assert.match(v.out, /^Klangwelt \d+\.\d+\.\d+/);
+  assert.equal(v.out.trim(), `Klangwelt ${VERSION}`);
+});
+
+test("the exe carries the version: product version as written, file version from date and time", async () => {
+  const script = `$v = (Get-Item -LiteralPath '${EXE}').VersionInfo; "$($v.ProductVersion)|$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart).$($v.FilePrivatePart)"`;
+  const info = await new Promise((res, rej) => {
+    const p = spawn("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], { stdio: ["ignore", "pipe", "inherit"] });
+    let out = "";
+    p.stdout.on("data", (d) => (out += d));
+    p.on("error", rej);
+    p.on("close", () => res(out.trim()));
+  });
+  // 2026.11.21+1430 → 2026.11.21.1430: tauri-build takes numeric build metadata as the fourth part
+  const [core, build = "0"] = VERSION.split("+");
+  assert.equal(info, `${VERSION}|${core}.${Number(build)}`);
 });
 
 test("unknown invocation: error message with help, exit code 2 – no window", async () => {

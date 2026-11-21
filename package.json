@@ -8,6 +8,7 @@
     "setup": "git submodule update --init && npm --prefix klangwelt/ui ci",
     "build:ui": "npm --prefix klangwelt/ui run build",
     "release": "npm run build:ui && cargo build --release -p klangwelt --features tauri/custom-protocol",
+    "release:tag": "node scripts/release-tag.mjs",
     "test:e2e": "node --test --test-concurrency=1 \"tests/e2e/*.test.mjs\"",
     "licenses": "node klangwelt/ui/scripts/third-party-licenses.mjs --root=."
   }

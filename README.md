@@ -956,6 +956,28 @@ anywhere and is started directly.
 * A code signature: without a certificate, Windows SmartScreen warns about an
   unknown publisher on first launch.
 
+### Versions, changelog and GitHub releases
+
+The desktop app has Klangwelt's version: a release named after its date and
+time, such as `2026.11.21+1430`. `app/tauri.conf.json` reads it from
+`klangwelt/ui/package.json`, `klangwelt --version` prints it, and Windows shows
+the exe's file version as 2026.11.21.1430. What changed is in
+[klangwelt/CHANGELOG.md](https://github.com/detlev-funke/klangwelt/blob/main/CHANGELOG.md)
+and in the app under the gear menu → What's new.
+
+A release starts in klangwelt (`npm run changelog -- release`, see
+[changelog/README.md](https://github.com/detlev-funke/klangwelt/blob/main/changelog/README.md)).
+Then, here:
+
+```bash
+npm run release:tag
+```
+
+It moves the `klangwelt/` submodule to the release commit if needed, commits
+that and sets the same tag (`v2026.11.21+1430`) – locally. Once the tag is
+pushed, `.github/workflows/release.yml` builds `klangwelt.exe` on Windows and
+publishes it as a GitHub release with the desktop app's entries of that version.
+
 ## License and legal
 
 * **License:** Klangwelt is free software under the [MIT License](LICENSE) –
