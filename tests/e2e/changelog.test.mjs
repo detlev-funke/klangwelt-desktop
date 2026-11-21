@@ -43,7 +43,9 @@ const dialog = () =>
         version: s.dataset.version ?? null,
         fresh: !!s.querySelector(".whatsnew-fresh"),
         ids: [...s.querySelectorAll(".whatsnew-entry")].map((e) => e.dataset.change),
+        titles: [...s.querySelectorAll(".whatsnew-title")].map((e) => e.textContent),
         texts: [...s.querySelectorAll(".whatsnew-text")].map((e) => e.textContent),
+        images: [...s.querySelectorAll(".whatsnew-entry")].map((e) => e.querySelector("img.whatsnew-image")?.getAttribute("src") ?? null),
       })),
     };
   });
@@ -66,7 +68,7 @@ test("the app's version is Klangwelt's; a first start shows no note and remember
   assert.equal(s.note, null);
 });
 
-test("gear menu → What's new: every release in German, without browser-only entries", async () => {
+test("gear menu → What's new: every release in German with bold titles and screenshots, without browser-only entries", async () => {
   await app.clickOn('[data-help="einstellungen"]');
   await app.waitFor(() => /Version \S+/.test(document.querySelector(".set-menu.open [data-whatsnew]")?.textContent ?? ""), { what: "menu entry with version" });
   assert.equal(await app.eval(() => document.querySelector(".set-menu.open [data-whatsnew]").textContent), `NeuigkeitenVersion ${VERSION}`);
@@ -81,9 +83,30 @@ test("gear menu → What's new: every release in German, without browser-only en
   for (const [i, r] of want.releases.entries()) {
     assert.deepEqual(releases[i].ids, r.entries.map((e) => e.id), r.version);
     assert.deepEqual(releases[i].texts, r.entries.map((e) => e.text), r.version);
+    assert.deepEqual(releases[i].titles, r.entries.map((e) => `${e.title}:`), r.version);
+    assert.deepEqual(releases[i].images, r.entries.map((e) => e.image ?? null), r.version);
   }
   const open = d.sections.find((s) => s.unreleased);
   assert.deepEqual(open?.ids ?? [], want.unreleased.map((e) => e.id));
+  assert.deepEqual(open?.titles ?? [], want.unreleased.map((e) => `${e.title}:`));
+  assert.deepEqual(open?.images ?? [], want.unreleased.map((e) => e.image ?? null));
+  // the screenshots come out of the exe (CSP img-src 'self') and load when scrolled into view
+  const pictures = await app.eval(async () => {
+    const out = [];
+    for (const img of document.querySelectorAll(".modal img.whatsnew-image")) {
+      img.scrollIntoView({ block: "center" });
+      const t0 = performance.now();
+      while (!(img.complete && img.naturalWidth) && performance.now() - t0 < 5000) await new Promise((r) => setTimeout(r, 50));
+      out.push({ src: img.getAttribute("src"), loaded: img.naturalWidth > 0, bold: Number(getComputedStyle(img.closest(".whatsnew-entry").querySelector(".whatsnew-title")).fontWeight) >= 600 });
+    }
+    return out;
+  });
+  const withImage = d.sections.flatMap((s) => s.images).filter(Boolean);
+  assert.deepEqual(pictures.map((p) => p.src), withImage);
+  for (const p of pictures) {
+    assert.ok(p.loaded, `${p.src} loads`);
+    assert.ok(p.bold, "title in bold");
+  }
   // the browser's own entries stay out
   const all = d.sections.flatMap((s) => s.ids);
   const browserOnly = [...appData("de").releases.flatMap((r) => r.entries), ...appData("de").unreleased].filter((e) => e.platform === "browser").map((e) => e.id);
