@@ -54,9 +54,11 @@ const coreError = () =>
     return { text, expected: i18n.t("Track {id} not found", { id: 424242 }) };
   });
 
-/** Open the settings menu; its language entries with their flags. */
+/** Open the settings menu, then its language list (the entry with the current language);
+ *  the language entries with their flags. */
 async function openLanguageMenu() {
   await app.clickOn('[data-help="einstellungen"]');
+  await app.clickOn(".set-menu.open .lang-entry");
   await app.waitFor(() => document.querySelectorAll(".set-menu.open [data-lang]").length === 7, { what: "language menu" });
   return app.eval(() =>
     [...document.querySelectorAll(".set-menu.open [data-lang]")].map((b) => {

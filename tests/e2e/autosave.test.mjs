@@ -40,6 +40,7 @@ const tracksInFile = (file) =>
 
 async function chooseLanguage(code) {
   await app.clickOn('[data-help="einstellungen"]');
+  await app.clickOn(".set-menu.open .lang-entry");
   await app.waitFor(() => T.$$(".set-menu.open [data-lang]").length === 7, { what: "language menu" });
   await app.clickOn(`.set-menu.open [data-lang="${code}"]`);
   // the UI reloads; the core keeps running

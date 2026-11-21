@@ -101,6 +101,57 @@ async fn export_reveal(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Interface size (gear menu): the webview's zoom. That is the browser's own page zoom,
+/// so pointer events, element boxes and canvas sizes in the page stay in one coordinate
+/// system and every hit test keeps working. Remembered in the settings file and applied
+/// at the next start before the window shows (`run_with`).
+const UI_SCALE: &str = "ui_scale";
+
+fn clamp_ui_scale(s: f64) -> f64 {
+    if s.is_finite() {
+        (s.clamp(0.4, 2.0) * 100.0).round() / 100.0
+    } else {
+        1.0
+    }
+}
+
+fn saved_ui_scale(app: &tauri::AppHandle) -> f64 {
+    settings::read(&settings_file(app)).get(UI_SCALE).and_then(serde_json::Value::as_f64).map(clamp_ui_scale).unwrap_or(1.0)
+}
+
+#[tauri::command]
+fn ui_scale_get(app: tauri::AppHandle) -> f64 {
+    saved_ui_scale(&app)
+}
+
+/// Sets the interface size (1 = 100 %) and answers the one that applies.
+#[tauri::command]
+fn ui_scale_set(app: tauri::AppHandle, scale: f64) -> Result<f64, String> {
+    let s = clamp_ui_scale(scale);
+    if let Some(w) = app.get_webview_window("main") {
+        w.set_zoom(s).map_err(|e| e.to_string())?;
+    }
+    settings::set(&settings_file(&app), UI_SCALE, serde_json::Value::from(s))?;
+    Ok(s)
+}
+
+/// Opens a web page in the system's browser (the gear menu's project page). Only https
+/// addresses, handed over as one argument – nothing a shell would interpret.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    let plain = url.starts_with("https://") && url.len() < 2048 && !url.chars().any(|c| c.is_whitespace() || c.is_control() || c == '"');
+    if !plain {
+        return Err(klang_i18n::tr!("Not a web address: {url}", url = url));
+    }
+    #[cfg(windows)]
+    std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", &url]).spawn().map_err(|e| e.to_string())?;
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open").arg(&url).spawn().map_err(|e| e.to_string())?;
+    #[cfg(all(unix, not(target_os = "macos")))]
+    std::process::Command::new("xdg-open").arg(&url).spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// The system's file picker for a .klangwelt file ("Choose file…" in the Open
 /// dialog); starts in the project folder. The path to open it with, `None` when
 /// cancelled. The browser's shell answers the same command with its file picker.
@@ -211,6 +262,9 @@ fn desktop_commands() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         app_close,
         export_reveal,
+        open_url,
+        ui_scale_get,
+        ui_scale_set,
         project_pick,
         library::library_add,
         libraries::library_list,
@@ -239,6 +293,11 @@ pub fn run_with(open: Option<std::path::PathBuf>) {
             // The window starts invisible (tauri.conf.json) and appears here –
             // for automated tests in the background, without popping up.
             if let Some(w) = app.get_webview_window("main") {
+                // the interface size of last time, before anything shows
+                let scale = saved_ui_scale(&handle);
+                if scale != 1.0 {
+                    let _ = w.set_zoom(scale);
+                }
                 if background_mode() {
                     show_in_background(&w);
                 } else {

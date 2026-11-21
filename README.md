@@ -95,6 +95,9 @@ KLANGWELT_EXE=target/release/klangwelt.exe KLANGWELT_STUMM=1 npm run test:e2e
   * Agent (MCP) and chat.
   * Windows, settings, expression, audio analysis, sound.
   * Recording with the live analysis (note, level, key, tempo) and the finished analysis.
+  * Display settings: the language list behind one entry, the interface size as the
+    window's zoom (clicks, double clicks and drags still hit; kept for the next start),
+    spacing tight / normal / airy, the project page link (https only).
 * **Not testable automatically:** a real microphone and downloading the PDMX library.
 
 The library's test pieces are written as MusicXML at runtime by
@@ -132,6 +135,7 @@ klangwelt repo (`klangwelt/ui`: `npm run test:unit`, `npm run test:web`).
 | Double-click this line | Default height |
 | F1 | Open the help window and pin the text for the element under the mouse (again on the same element: unpin) |
 | Ctrl+E | Export |
+| Gear → Display | Interface size 40–200 % (the window's zoom, applies at once and at the next launch – `einstellungen.json`) and spacing tight / normal / airy |
 
 ### Saving and opening projects
 
