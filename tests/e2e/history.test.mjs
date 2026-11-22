@@ -136,6 +136,37 @@ test("checkpoint and variant from a row; both are saved in the file and come bac
   assert.deepEqual(app.errors, []);
 });
 
+test("the history comes back after a restart even after view changes and the first save naming the project", async () => {
+  await fresh();
+  await someSteps();
+  // no undo steps: compact view and a row height (the history used to be refused after these)
+  await app.eval(async () => {
+    const id = T.st.snapshot.peek().project.tracks[0].id;
+    await T.st.run({ type: "setTrack", trackId: id, patch: { view: "compact" } });
+    await T.st.run({ type: "setTrack", trackId: id, patch: { compactHeight: 110 } });
+  });
+  await app.clickOn(".hist-checkpoint");
+  const file = join(app.tmp, "Ansicht.klangwelt");
+  await invoke("project_save", { path: file });
+  // after saving, a checkpoint alone is an unsaved change
+  await app.eval(() => window.__TAURI__.core.invoke("history_checkpoint", { name: "Nach dem Speichern" }));
+  assert.equal(await app.eval(async () => (await window.__TAURI__.core.invoke("get_state")).dirty), true, "the checkpoint is unsaved");
+  await invoke("project_save", { path: file });
+  const before = await rows();
+  const tmp = app.tmp;
+  await app.stop();
+  app = await startApp({ tmp });
+  await invoke("project_open", { path: file });
+  await app.eval(() => T.st.showPanel("historie"));
+  await app.waitFor(() => T.$$(".hist-row .hist-flag").length === 2, { what: "both checkpoints after the restart" });
+  assert.deepEqual(await app.eval(() => T.$$(".hist-row .hist-flag").map((f) => f.textContent.trim())), ["Checkpoint 1", "Nach dem Speichern"]);
+  // (the step column without the flags: the window didn't show the second one before)
+  assert.deepEqual((await rows()).map((r) => r.cells.slice(3)), before.map((r) => r.cells.slice(3)));
+  assert.equal(await app.eval(() => T.st.snapshot.peek().project.name), "Ansicht", "named after its file");
+  assert.equal(await app.eval(() => T.st.snapshot.peek().dirty), false);
+  assert.deepEqual(app.errors, []);
+});
+
 test("combine variants: changed bars per track, a conflict to decide, listen, a new variant", async () => {
   await fresh();
   // lead with one note per bar and a checkpoint; the main version changes bars 5–6,
